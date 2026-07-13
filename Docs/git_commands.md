@@ -1,5 +1,5 @@
 git status
-#if everything looks ok 
+#if everything looks ok
 git add .
 #next
 git commit -m "<push summary details>"
@@ -9,4 +9,4 @@ git push
 
 #everytime before starting coding or updating any file type:
 git pull
-##everytime before ending for the day, do commands from line 1 to like 8.
+##everytime before ending for the day, do commands from line 1 to line 8.
