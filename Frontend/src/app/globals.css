@@ -3,10 +3,11 @@
 :root {
   --background: #09090b;
   --foreground: #fafafa;
-  --surface: #111113;
+  --surface: #0e0e12;
   --muted: #a1a1aa;
   --border: rgba(255, 255, 255, 0.08);
-  --accent: #6366f1;
+  --accent: #8b6fcf;
+  --royal: #c9a25e;
 }
 
 @theme inline {
@@ -30,6 +31,9 @@ body {
   color: var(--foreground);
   font-family: var(--font-manrope), sans-serif;
   text-rendering: optimizeLegibility;
+  background-image:
+    radial-gradient(circle at top, rgba(126, 105, 171, 0.14), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 18%);
 }
 
 body::selection {
@@ -54,6 +58,6 @@ input:-webkit-autofill:focus {
 }
 
 .glass-panel {
-  background: rgba(17, 17, 19, 0.84);
+  background: rgba(14, 14, 18, 0.84);
   backdrop-filter: blur(24px);
 }
