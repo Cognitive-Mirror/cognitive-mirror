@@ -6,4 +6,7 @@ Allan - created git_commands
 Shashank - installed libraries from requirements.txt
 Shashank - created updates.md
 Shashank - updated git_commands.md\
----------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------
+14-07-2026
+Shashank - started backend with FastAPI
+Mihir - created login page
