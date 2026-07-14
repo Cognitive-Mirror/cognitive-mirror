@@ -10,3 +10,4 @@ Shashank - updated git_commands.md\
 14-07-2026
 Shashank - started backend with FastAPI
 Mihir - created login page
+Shashank - connected fastapi to login page to validate passwords
