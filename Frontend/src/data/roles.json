@@ -1,0 +1,22 @@
+{
+  "roles": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "description": "Manage organization, users, capabilities and analytics.",
+      "redirect": "/admin"
+    },
+    {
+      "id": "manager",
+      "name": "Manager",
+      "description": "Validate evidence and review capability progress.",
+      "redirect": "/manager"
+    },
+    {
+      "id": "learner",
+      "name": "Learner",
+      "description": "Learn capabilities, submit evidence and track progress.",
+      "redirect": "/learner"
+    }
+  ]
+}
