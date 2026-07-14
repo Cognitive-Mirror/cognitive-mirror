@@ -394,10 +394,13 @@ export function LoginCard() {
         rememberMe: formState.rememberMe,
       });
 
+      if (!result.success) {
+        setFeedback(result.message);
+        return;
+      }
+
       setFeedback(
-        result.mode === "demo"
-          ? `Demo account recognized. Redirecting to ${result.resolvedRole.name}.`
-          : `Mock sign-in successful. Routing by the selected ${result.resolvedRole.name} role.`,
+        `${result.message} Redirecting to ${result.resolvedRole.name}.`,
       );
 
       router.push(result.redirect);
@@ -548,7 +551,11 @@ export function LoginCard() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="rounded-2xl border border-emerald-500/16 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300"
+                className={`rounded-2xl border px-4 py-3 text-sm ${
+                  feedback.toLowerCase().includes("invalid")
+                    ? "border-red-500/20 bg-red-500/10 text-red-300"
+                    : "border-emerald-500/16 bg-emerald-500/10 text-emerald-300"
+                }`}
                 aria-live="polite"
               >
                 {feedback}
