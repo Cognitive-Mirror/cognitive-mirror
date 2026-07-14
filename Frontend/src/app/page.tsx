@@ -1,5 +1,4 @@
-import { BrandSection } from "@/components/BrandSection";
-import { LoginCard } from "@/components/LoginCard";
+import { BrandSection, LoginCard } from "@/components/LoginExperience";
 
 export default function HomePage() {
   return (
