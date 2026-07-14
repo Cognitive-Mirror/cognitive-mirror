@@ -1,12 +1,5 @@
 import roleConfig from "@/data/roles.json";
-
-export type RoleId = "admin" | "manager" | "learner";
-export type RoleConfig = {
-  id: RoleId;
-  name: string;
-  description: string;
-  redirect: string;
-};
+import type { RoleConfig, RoleId } from "@/hooks/useRole";
 
 export type LoginPayload = {
   email: string;
