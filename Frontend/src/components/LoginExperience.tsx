@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useTransition, useMemo } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -312,20 +312,24 @@ export function LoginCard() {
   const { roles, selectedRole, selectedRoleId, setSelectedRoleId } = useRole();
   const [form, setForm] = useState<FormState>(INIT);
   const [feedback, setFeedback] = useState("");
-  const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFeedback("");
-    startTransition(async () => {
+    setIsSubmitting(true);
+
+    try {
       const result = await mockAuthenticate({ email: form.email, password: form.password, roleId: selectedRoleId, rememberMe: form.rememberMe });
       if (!result.success) { setFeedback(result.message); return; }
       setFeedback(`${result.message} Redirecting to ${result.resolvedRole.name}.`);
       router.push(result.redirect);
-    });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAutofill = (a: { email: string; password: string; roleId: RoleId }) => {
@@ -435,10 +439,10 @@ export function LoginCard() {
               type="submit"
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.993 }}
-              disabled={isPending}
+              disabled={isSubmitting}
               className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-5 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(99,102,241,0.35)] transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {isPending ? "Signing In…" : "Login"}
+              {isSubmitting ? "Signing In..." : "Login"}
               <ArrowRight className="h-4 w-4" />
             </motion.button>
 

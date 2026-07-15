@@ -1,0 +1,26 @@
+{
+  "name": "cognitive-mirror",
+  "version": "1.0.0",
+  "description": "> AI-powered Capability Intelligence Platform",
+  "main": "index.js",
+  "scripts": {
+  "frontend": "cd Frontend && npm run dev",
+  "backend": ".venv\\Scripts\\python.exe -m uvicorn main:app --reload --app-dir Backend",
+  "dev": "concurrently \"npm run backend\" \"npm run frontend\""
+},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cognitive-Mirror/cognitive-mirror.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Cognitive-Mirror/cognitive-mirror/issues"
+  },
+  "homepage": "https://github.com/Cognitive-Mirror/cognitive-mirror#readme",
+  "dependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
