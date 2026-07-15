@@ -4,10 +4,10 @@
   "description": "> AI-powered Capability Intelligence Platform",
   "main": "index.js",
   "scripts": {
-  "frontend": "cd Frontend && npm run dev",
-  "backend": ".venv\\Scripts\\python.exe -m uvicorn main:app --reload --app-dir Backend",
-  "dev": "concurrently \"npm run backend\" \"npm run frontend\""
-},
+    "frontend": "cd Frontend && npm run dev",
+    "backend": ".venv\\Scripts\\python.exe -m uvicorn main:app --reload --app-dir Backend",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\""
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Cognitive-Mirror/cognitive-mirror.git"
