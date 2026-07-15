@@ -25,3 +25,4 @@ A - added persisted light/dark mode slider with localStorage preference and resp
 A - added reusable profile image dropdown with Switch Accounts, Log Out, and outside-click dismissal
 A - added avatar.svg profile asset and shared ThemeControls component
 A - added Capability State Model UI signals for evidence, assessment, reflection, validation, confidence, transfer, KPI linkage, outcome, improvement, stagnation, and decay risk
+S - made it so that backend and frontend run with only one command

@@ -2,3 +2,4 @@
 
 2. Strictly follow user instructions. Example: if the user is working on frontend and asks to not change the backend unless necessary, then you may not change the backend files. Always ask for confirmation.
 
+3. Always keep tabs on the updates.md file so that the features that are already created do not get erased or rewritten, which in turn may corrupt the project.
