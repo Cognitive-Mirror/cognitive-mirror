@@ -1,8 +1,13 @@
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 
-app = FastAPI()
+from app.schemas.auth import LoginRequest
+
+app = FastAPI(
+    title="Cognitive Mirror",
+    description="AI-powered Capability Intelligence Platform",
+    version="0.1.0",
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -11,9 +16,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-class LoginRequest(BaseModel):
-    email: str
-    password: str
 
 
 @app.get("/")

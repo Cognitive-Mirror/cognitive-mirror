@@ -1,0 +1,1 @@
+"""Cognitive Mirror — Application package."""
