@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { RoleId } from "@/lib/auth";
 import { ProfileMenu, ThemeToggle } from "@/components/ThemeControls";
+import DashboardChatPanel from "@/components/DashboardChatPanel";
 
 type RoleCopy = { eyebrow: string; title: string; description: string };
 
@@ -307,6 +308,7 @@ export function CapabilityWorkspace({ role }: { role: RoleId }) {
           </Link>
         </section>
       </div>
+      {(role === "learner" || role === "manager") && <DashboardChatPanel role={role} />}
     </main>
   );
 }

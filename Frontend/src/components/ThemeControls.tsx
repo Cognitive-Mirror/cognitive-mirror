@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { LogOut, Moon, Sun, UserRound } from "lucide-react";
 
 const STORAGE_KEY = "cognitive-mirror-theme";
@@ -72,16 +73,18 @@ export function ProfileMenu({ role }: { role: string }) {
 
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label="Open profile menu"
-        className="profile-avatar"
+      <Link
+        href="/profile"
+        className="profile-avatar-wrapper"
+        aria-label="Go to profile dashboard"
+        onClick={(event) => {
+          event.preventDefault();
+          setOpen((value) => !value);
+        }}
       >
-        <Image src="/avatar.svg" alt="Profile" width={38} height={38} />
-      </button>
+        <Image src="/avatar.svg" alt="Profile" width={38} height={38} className="profile-avatar" />
+        <span className="profile-tooltip">Alex Morgan – {role} account</span>
+      </Link>
       {open && (
         <div role="menu" className="profile-menu">
           <div className="profile-menu-heading">

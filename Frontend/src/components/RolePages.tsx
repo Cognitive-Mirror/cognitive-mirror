@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, Download, FileBarChart, Flag, Play, Search, Sparkles, Target } from "lucide-react";
+import { ArrowLeft, Download, FileBarChart, Flag, MessageCircle, Play, Search, Sparkles, Target } from "lucide-react";
 import type { RoleId } from "@/lib/auth";
 import { ProfileMenu, ThemeToggle } from "@/components/ThemeControls";
 
@@ -18,12 +18,14 @@ const nav: Record<RoleId, { label: string; href: string }[]> = {
     { label: "Capability Map",     href: "/learner/capability-map" },
     { label: "Practice & Reflection", href: "/learner/practice" },
     { label: "Impact Signals",     href: "/learner/impact" },
+    { label: "Chat",               href: "/learner" },
   ],
   manager: [
     { label: "Overview",           href: "/manager" },
     { label: "Capability Maps",    href: "/manager/capability-maps" },
     { label: "Evidence Validation",href: "/manager/evidence" },
     { label: "Impact Signals",     href: "/manager/impact" },
+    { label: "Chat",               href: "/manager" },
   ],
   admin: [
     { label: "User Management",    href: "/admin/users" },

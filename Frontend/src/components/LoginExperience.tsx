@@ -15,12 +15,17 @@ import {
   UserRound,
 } from "lucide-react";
 import {
-  mockAuthenticate,
   getDemoAccounts,
   ROLES,
   type RoleConfig,
   type RoleId,
 } from "@/lib/auth";
+
+import {
+  login,
+  loginWithGoogle,
+  getUserRole,
+} from "@/services/authService";
 
 export function useRole(initialRoleId: RoleId = "learner") {
   const [selectedRoleId, setSelectedRoleId] = useState<RoleId>(initialRoleId);
@@ -317,20 +322,128 @@ export function LoginCard() {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setFeedback("");
-    setIsSubmitting(true);
+ const handleSubmit = async (
+  e: FormEvent<HTMLFormElement>
+) => {
 
-    try {
-      const result = await mockAuthenticate({ email: form.email, password: form.password, roleId: selectedRoleId, rememberMe: form.rememberMe });
-      if (!result.success) { setFeedback(result.message); return; }
-      setFeedback(`${result.message} Redirecting to ${result.resolvedRole.name}.`);
-      router.push(result.redirect);
-    } finally {
-      setIsSubmitting(false);
+  e.preventDefault();
+
+  setFeedback("");
+
+  setIsSubmitting(true);
+
+  try {
+
+    //-----------------------------------
+    // Firebase Authentication
+    //-----------------------------------
+
+    const credential = await login(
+      form.email,
+      form.password
+    );
+
+    //-----------------------------------
+    // Get role from Firestore
+    //-----------------------------------
+
+    const role = await getUserRole(
+      credential.user.uid
+    );
+
+    //-----------------------------------
+    // Redirect
+    //-----------------------------------
+
+    if (role === "admin") {
+
+      setFeedback("Welcome Admin.");
+
+      router.push("/admin");
+
     }
-  };
+
+    else if (role === "manager") {
+
+      setFeedback("Welcome Manager.");
+
+      router.push("/manager");
+
+    }
+
+    else {
+
+      setFeedback("Welcome Learner.");
+
+      router.push("/learner");
+
+    }
+
+  }
+
+  catch (err) {
+
+    if (err instanceof Error)
+
+      setFeedback(err.message);
+
+    else
+
+      setFeedback("Login failed.");
+
+  }
+
+  finally {
+
+    setIsSubmitting(false);
+
+  }
+
+};
+
+const handleGoogleLogin = async () => {
+
+  setFeedback("");
+
+  setIsSubmitting(true);
+
+  try {
+
+    const result = await loginWithGoogle();
+
+    setFeedback("Welcome!");
+
+    if (result.role === "admin") {
+
+      router.push("/admin");
+
+    } else if (result.role === "manager") {
+
+      router.push("/manager");
+
+    } else {
+
+      router.push("/learner");
+
+    }
+
+  } catch (err) {
+
+    if (err instanceof Error)
+
+      setFeedback(err.message);
+
+    else
+
+      setFeedback("Google Sign-In failed.");
+
+  } finally {
+
+    setIsSubmitting(false);
+
+  }
+
+};
 
   const handleAutofill = (a: { email: string; password: string; roleId: RoleId }) => {
     setSelectedRoleId(a.roleId);
@@ -454,6 +567,8 @@ export function LoginCard() {
 
             <motion.button
               type="button"
+              onClick={handleGoogleLogin}
+              disabled={isSubmitting}
               whileHover={{ y: -2 }}
               whileTap={{ scale: 0.993 }}
               className="flex h-14 w-full items-center justify-center rounded-2xl text-sm font-medium transition"
@@ -505,4 +620,6 @@ export function LoginCard() {
       </motion.div>
     </div>
   );
+
 }
+
