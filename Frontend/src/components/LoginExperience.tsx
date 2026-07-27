@@ -410,7 +410,8 @@ const handleGoogleLogin = async () => {
   try {
 
     const result = await loginWithGoogle();
-
+    console.log("Google login returned:", result);
+console.log("Role returned:", result.role);
     setFeedback("Welcome!");
 
     if (result.role === "admin") {

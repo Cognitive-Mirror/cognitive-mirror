@@ -4,34 +4,21 @@ import { useState, useEffect } from "react";
 import { MessageCircle, X, Send } from "lucide-react";
 import ChatWindow from "@/components/ChatWindow";
 import type { RoleId } from "@/lib/auth";
+import { auth } from "@/services/firebase";
 
-type ChatConfig = {
-  conversationId: string;
-  userId: string;
-  userName: string;
-  channelLabel: string;
-};
 
-const roleConfig: Record<RoleId, ChatConfig> = {
+
+const roleConfig = {
   learner: {
-    conversationId: "chat-001",
-    userId: "learner001",
-    userName: "Learner",
-    channelLabel: "Learner channel",
+    channelLabel: "Private AI Assistant",
   },
 
   manager: {
-    conversationId: "chat-001",
-    userId: "manager001",
-    userName: "Manager",
-    channelLabel: "Manager channel",
+    channelLabel: "Private AI Assistant",
   },
 
   admin: {
-    conversationId: "chat-001",
-    userId: "admin001",
-    userName: "Admin",
-    channelLabel: "Admin channel",
+    channelLabel: "Private AI Assistant",
   },
 };
 
@@ -39,6 +26,7 @@ export default function DashboardChatPanel({ role }: { role: RoleId }) {
   const [open, setOpen] = useState(false);
   const [hasUnread, setHasUnread] = useState(true);
   const config = roleConfig[role] ?? roleConfig.learner;
+  const user = auth.currentUser;
   console.log("CONFIG =", config);
   function toggle() {
     setOpen((prev) => !prev);
@@ -94,12 +82,16 @@ export default function DashboardChatPanel({ role }: { role: RoleId }) {
 
         {/* Chat content (reuses existing ChatWindow) */}
         <div className="chat-panel-body">
-          <ChatWindow
-            conversationId={config.conversationId}
-            currentUserId={config.userId}
-            currentUserName={config.userName}
-            compact
-          />
+        <ChatWindow
+    conversationId={user?.uid ?? "anonymous"}
+    currentUserId={user?.uid ?? "anonymous"}
+    currentUserName={
+        user?.displayName ??
+        user?.email ??
+        "User"
+    }
+    compact
+/>
         </div>
       </div>
     </>

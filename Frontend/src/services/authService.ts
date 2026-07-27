@@ -31,32 +31,36 @@ export async function logout() {
 }
 
 export async function getUserRole(uid: string) {
-
-  const snapshot = await getDoc(
-    doc(db, "users", uid)
-  );
+  const snapshot = await getDoc(doc(db, "users", uid));
 
   if (!snapshot.exists()) {
     throw new Error("User record not found.");
   }
 
+  console.log("Firestore role:", snapshot.data().role);
+
   return snapshot.data().role;
-}
+}   
 
 export async function loginWithGoogle() {
-   console.log("Opening Google popup");
   const result = await signInWithPopup(auth, googleProvider);
-  console.log("Popup success");
-  console.log(result.user.uid);
-  console.log(result.user.email);
+
   const uid = result.user.uid;
 
-  const userRef = doc(db, "users", uid);
-   console.log("Checking Firestore...");
-  const snapshot = await getDoc(userRef);
-   console.log("Exists?", snapshot.exists());
-  if (!snapshot.exists()) {
+  console.log("Popup success");
+  console.log(uid);
+  console.log(result.user.email);
 
+  const userRef = doc(db, "users", uid);
+
+  console.log("Checking Firestore...");
+
+  const snapshot = await getDoc(userRef);
+
+  console.log("Exists?", snapshot.exists());
+
+  // First time Google login
+  if (!snapshot.exists()) {
     await setDoc(userRef, {
       email: result.user.email,
       name: result.user.displayName,
@@ -69,11 +73,16 @@ export async function loginWithGoogle() {
     };
   }
 
+  // Existing user
+  const role = snapshot.data().role;
+
+  console.log("Firestore role =", role);
+console.log("Type =", typeof role);
+
   return {
-    role: snapshot.data().role,
+    role,
     user: result.user,
   };
 }
-
 console.log("authService loaded");
 console.log(loginWithGoogle);
