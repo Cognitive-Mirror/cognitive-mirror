@@ -25,6 +25,7 @@ import {
   login,
   loginWithGoogle,
   getUserRole,
+  verifyBackendToken,
 } from "@/services/authService";
 
 export function useRole(initialRoleId: RoleId = "learner") {
@@ -344,6 +345,14 @@ export function LoginCard() {
     );
 
     //-----------------------------------
+    // Verify token with FastAPI backend
+    //-----------------------------------
+
+    const idToken = await credential.user.getIdToken();
+    const verifiedUser = await verifyBackendToken(idToken);
+    console.log("FastAPI backend verified user:", verifiedUser);
+
+    //-----------------------------------
     // Get role from Firestore
     //-----------------------------------
 
@@ -410,6 +419,14 @@ const handleGoogleLogin = async () => {
   try {
 
     const result = await loginWithGoogle();
+
+    //-----------------------------------
+    // Verify token with FastAPI backend
+    //-----------------------------------
+
+    const idToken = await result.user.getIdToken();
+    const verifiedUser = await verifyBackendToken(idToken);
+    console.log("FastAPI backend verified user:", verifiedUser);
 
     setFeedback("Welcome!");
 

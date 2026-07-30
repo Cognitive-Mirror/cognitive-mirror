@@ -1,7 +1,8 @@
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 
 from app.schemas.auth import LoginRequest
+from app.auth import verify_token
 
 app = FastAPI(
     title="Cognitive Mirror",
@@ -57,3 +58,15 @@ def login(data: LoginRequest):
         status_code=401,
         detail="Invalid username or password.",
     )
+
+
+@app.get("/auth/me")
+def get_me(decoded_token: dict = Depends(verify_token)):
+    return {
+        "uid": decoded_token.get("uid") or decoded_token.get("sub"),
+        "email": decoded_token.get("email"),
+        "name": decoded_token.get("name"),
+        "picture": decoded_token.get("picture"),
+        "claims": decoded_token,
+    }
+

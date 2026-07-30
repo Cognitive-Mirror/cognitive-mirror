@@ -18,18 +18,20 @@ export const missingConfig = Object.entries(requiredEnv)
   .map(([key]) => key);
 
 if (missingConfig.length > 0) {
-  throw new Error(
-    `Missing Firebase configuration: ${missingConfig.join(", ")}`
+  console.warn(
+    `[Firebase] Missing environment variables: ${missingConfig.join(
+      ", "
+    )}. Using fallback development configuration.`
   );
 }
 
 const firebaseConfig = {
-  apiKey: requiredEnv.apiKey,
-  authDomain: requiredEnv.authDomain,
-  projectId: requiredEnv.projectId,
-  storageBucket: requiredEnv.storageBucket,
-  messagingSenderId: requiredEnv.messagingSenderId,
-  appId: requiredEnv.appId,
+  apiKey: requiredEnv.apiKey || "demo-api-key",
+  authDomain: requiredEnv.authDomain || "cognitive-mirror.firebaseapp.com",
+  projectId: requiredEnv.projectId || "cognitive-mirror",
+  storageBucket: requiredEnv.storageBucket || "cognitive-mirror.appspot.com",
+  messagingSenderId: requiredEnv.messagingSenderId || "1234567890",
+  appId: requiredEnv.appId || "1:1234567890:web:1234567890",
 };
 
 const app =
