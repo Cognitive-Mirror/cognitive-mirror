@@ -31,25 +31,25 @@ export async function logout() {
 }
 
 export async function getUserRole(uid: string) {
-
-  const snapshot = await getDoc(
-    doc(db, "users", uid)
-  );
+  const snapshot = await getDoc(doc(db, "users", uid));
 
   if (!snapshot.exists()) {
     throw new Error("User record not found.");
   }
 
+  console.log("Firestore role:", snapshot.data().role);
+
   return snapshot.data().role;
-}
+}   
 
 export async function loginWithGoogle() {
   console.log("Opening Google popup");
   const result = await signInWithPopup(auth, googleProvider);
-  console.log("Popup success");
-  console.log(result.user.uid);
-  console.log(result.user.email);
+
   const uid = result.user.uid;
+  console.log("Popup success");
+  console.log(uid);
+  console.log(result.user.email);
 
   try {
     const userRef = doc(db, "users", uid);
@@ -110,6 +110,5 @@ export async function verifyBackendToken(idToken: string) {
     throw err;
   }
 }
-
 console.log("authService loaded");
 console.log(loginWithGoogle);

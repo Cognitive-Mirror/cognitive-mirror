@@ -90,10 +90,10 @@ function BackgroundAnimation() {
 
 /* ── Floating node chips — positioned away from the text block ── */
 const NODES = [
-  { label: "Capability",  top: "8%",  left: "10%" },
-  { label: "AI Review",   top: "16%", left: "55%" },
-  { label: "Evidence",    top: "72%", left: "8%"  },
-  { label: "Validation",  top: "80%", left: "58%" },
+  { label: "Capability", top: "8%", left: "10%" },
+  { label: "AI Review", top: "16%", left: "55%" },
+  { label: "Evidence", top: "72%", left: "8%" },
+  { label: "Validation", top: "80%", left: "58%" },
 ];
 
 function FloatingNodes() {
@@ -323,144 +323,136 @@ export function LoginCard() {
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
 
- const handleSubmit = async (
-  e: FormEvent<HTMLFormElement>
-) => {
+  const handleSubmit = async (
+    e: FormEvent<HTMLFormElement>
+  ) => {
 
-  e.preventDefault();
+    e.preventDefault();
 
-  setFeedback("");
+    setFeedback("");
 
-  setIsSubmitting(true);
+    setIsSubmitting(true);
 
-  try {
+    try {
 
-    //-----------------------------------
-    // Firebase Authentication
-    //-----------------------------------
+      //-----------------------------------
+      // Firebase Authentication
+      //-----------------------------------
 
-    const credential = await login(
-      form.email,
-      form.password
-    );
+      const credential = await login(
+        form.email,
+        form.password
+      );
 
-    //-----------------------------------
-    // Verify token with FastAPI backend
-    //-----------------------------------
+      //-----------------------------------
+      // Verify token with FastAPI backend
+      //-----------------------------------
 
-    const idToken = await credential.user.getIdToken();
-    const verifiedUser = await verifyBackendToken(idToken);
-    console.log("FastAPI backend verified user:", verifiedUser);
+      const idToken = await credential.user.getIdToken();
+      const verifiedUser = await verifyBackendToken(idToken);
+      console.log("FastAPI backend verified user:", verifiedUser);
 
-    //-----------------------------------
-    // Get role from Firestore
-    //-----------------------------------
+      //-----------------------------------
+      // Get role from Firestore
+      //-----------------------------------
 
-    const role = await getUserRole(
-      credential.user.uid
-    );
+      const role = await getUserRole(
+        credential.user.uid
+      );
 
-    //-----------------------------------
-    // Redirect
-    //-----------------------------------
+      //-----------------------------------
+      // Redirect
+      //-----------------------------------
 
-    if (role === "admin") {
+      if (role === "admin") {
 
-      setFeedback("Welcome Admin.");
+        setFeedback("Welcome Admin.");
 
-      router.push("/admin");
+        router.push("/admin");
 
-    }
+      }
 
-    else if (role === "manager") {
+      else if (role === "manager") {
 
-      setFeedback("Welcome Manager.");
+        setFeedback("Welcome Manager.");
 
-      router.push("/manager");
+        router.push("/manager");
 
-    }
+      }
 
-    else {
+      else {
 
-      setFeedback("Welcome Learner.");
+        setFeedback("Welcome Learner.");
 
-      router.push("/learner");
+        router.push("/learner");
 
-    }
-
-  }
-
-  catch (err) {
-
-    if (err instanceof Error)
-
-      setFeedback(err.message);
-
-    else
-
-      setFeedback("Login failed.");
-
-  }
-
-  finally {
-
-    setIsSubmitting(false);
-
-  }
-
-};
-
-const handleGoogleLogin = async () => {
-
-  setFeedback("");
-
-  setIsSubmitting(true);
-
-  try {
-
-    const result = await loginWithGoogle();
-
-    //-----------------------------------
-    // Verify token with FastAPI backend
-    //-----------------------------------
-
-    const idToken = await result.user.getIdToken();
-    const verifiedUser = await verifyBackendToken(idToken);
-    console.log("FastAPI backend verified user:", verifiedUser);
-
-    setFeedback("Welcome!");
-
-    if (result.role === "admin") {
-
-      router.push("/admin");
-
-    } else if (result.role === "manager") {
-
-      router.push("/manager");
-
-    } else {
-
-      router.push("/learner");
+      }
 
     }
 
-  } catch (err) {
+    catch (err) {
 
-    if (err instanceof Error)
+      if (err instanceof Error)
 
-      setFeedback(err.message);
+        setFeedback(err.message);
 
-    else
+      else
 
-      setFeedback("Google Sign-In failed.");
+        setFeedback("Login failed.");
 
-  } finally {
+    }
 
-    setIsSubmitting(false);
+    finally {
 
-  }
+      setIsSubmitting(false);
 
-};
+    }
+
+  };
+
+  const handleGoogleLogin = async () => {
+
+    setFeedback("");
+
+    setIsSubmitting(true);
+
+    try {
+
+      const result = await loginWithGoogle();
+
+      setFeedback("Welcome!");
+
+      if (result.role === "admin") {
+
+        router.push("/admin");
+
+      } else if (result.role === "manager") {
+
+        router.push("/manager");
+
+      } else {
+
+        router.push("/learner");
+
+      }
+
+    } catch (err) {
+
+      if (err instanceof Error)
+
+        setFeedback(err.message);
+
+      else
+
+        setFeedback("Google Sign-In failed.");
+
+    } finally {
+
+      setIsSubmitting(false);
+
+    }
+
+  };
 
   const handleAutofill = (a: { email: string; password: string; roleId: RoleId }) => {
     setSelectedRoleId(a.roleId);
