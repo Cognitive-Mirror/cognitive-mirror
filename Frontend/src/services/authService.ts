@@ -1,29 +1,27 @@
-import { auth, db } from "./firebase";
+/**
+ * Authentication — Firebase Auth on the client, verified server-side by FastAPI.
+ *
+ * Never log user identifiers, emails or tokens here; browser console output is
+ * visible to anyone with access to the device.
+ */
 
 import {
+  GoogleAuthProvider,
   signInWithEmailAndPassword,
   signInWithPopup,
-  GoogleAuthProvider,
   signOut,
 } from "firebase/auth";
 
-import {
-  doc,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
+import { auth, db } from "./firebase";
 
 const googleProvider = new GoogleAuthProvider();
 
-export async function login(
-  email: string,
-  password: string
-) {
-  return signInWithEmailAndPassword(
-    auth,
-    email,
-    password
-  );
+const DEFAULT_ROLE = "learner";
+
+export async function login(email: string, password: string) {
+  return signInWithEmailAndPassword(auth, email, password);
 }
 
 export async function logout() {
@@ -37,78 +35,59 @@ export async function getUserRole(uid: string) {
     throw new Error("User record not found.");
   }
 
-  console.log("Firestore role:", snapshot.data().role);
-
   return snapshot.data().role;
-}   
+}
 
 export async function loginWithGoogle() {
-  console.log("Opening Google popup");
   const result = await signInWithPopup(auth, googleProvider);
-
-  const uid = result.user.uid;
-  console.log("Popup success");
-  console.log(uid);
-  console.log(result.user.email);
+  const { uid, email, displayName } = result.user;
 
   try {
     const userRef = doc(db, "users", uid);
-    console.log("Checking Firestore...");
     const snapshot = await getDoc(userRef);
-    console.log("Exists?", snapshot.exists());
+
     if (!snapshot.exists()) {
       await setDoc(userRef, {
-        email: result.user.email,
-        name: result.user.displayName,
-        role: "learner",
+        email,
+        name: displayName,
+        role: DEFAULT_ROLE,
       });
 
-      return {
-        role: "learner",
-        user: result.user,
-      };
+      return { role: DEFAULT_ROLE, user: result.user };
     }
 
-    return {
-      role: snapshot.data().role,
-      user: result.user,
-    };
-  } catch (err) {
-    console.warn("Firestore unavailable, defaulting role to learner:", err);
-    return {
-      role: "learner",
-      user: result.user,
-    };
+    return { role: snapshot.data().role, user: result.user };
+  } catch {
+    // Firestore unreachable — fall back to the least-privileged role rather
+    // than blocking sign-in. Do not log the error payload; it can carry
+    // user identifiers.
+    console.warn("Firestore unavailable; defaulting to the learner role.");
+    return { role: DEFAULT_ROLE, user: result.user };
   }
 }
 
 export async function verifyBackendToken(idToken: string) {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
+
+  let response: Response;
   try {
-    const response = await fetch(`${apiUrl}/auth/me`, {
+    response = await fetch(`${apiUrl}/auth/me`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${idToken}`,
         "Content-Type": "application/json",
       },
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => null);
-      throw new Error(
-        errorData?.detail ?? "FastAPI token verification failed."
-      );
-    }
-
-    return await response.json();
-  } catch (err) {
-    if (err instanceof Error && err.message.includes("fetch")) {
-      throw new Error(
-        "Could not connect to FastAPI backend at http://127.0.0.1:8000. Make sure the backend is running via 'npm run dev'."
-      );
-    }
-    throw err;
+  } catch {
+    throw new Error(
+      `Could not reach the backend at ${apiUrl}. Start it with "npm run dev".`,
+    );
   }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.detail ?? "Backend token verification failed.");
+  }
+
+  return response.json();
 }
-console.log("authService loaded");
-console.log(loginWithGoogle);

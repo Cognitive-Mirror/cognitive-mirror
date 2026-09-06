@@ -349,8 +349,7 @@ export function LoginCard() {
       //-----------------------------------
 
       const idToken = await credential.user.getIdToken();
-      const verifiedUser = await verifyBackendToken(idToken);
-      console.log("FastAPI backend verified user:", verifiedUser);
+      await verifyBackendToken(idToken);
 
       //-----------------------------------
       // Get role from Firestore

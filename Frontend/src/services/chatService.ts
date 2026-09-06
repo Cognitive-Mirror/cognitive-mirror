@@ -1,5 +1,10 @@
-console.log("db =", db);
-import { db } from "./firebase";
+/**
+ * Workspace messaging — person-to-person chat backed by Firestore.
+ *
+ * This is human-to-human messaging. It is NOT an AI assistant and must not be
+ * labelled as one in the UI (see Docs/AI_BACKEND_WORKFLOW.md §9 and the
+ * Impact AI Thesis Risk 1: "It becomes a chatbot").
+ */
 
 import {
   addDoc,
@@ -11,6 +16,8 @@ import {
   Timestamp,
   type Unsubscribe,
 } from "firebase/firestore";
+
+import { db } from "./firebase";
 
 export type ChatMessage = {
   id: string;
@@ -30,69 +37,40 @@ export async function sendMessage(
     senderId: string;
     senderName: string;
     text: string;
-  }
-)
-
-{
-  console.log("===== SEND START =====");
-  console.log("db:", db);
-  console.log("chatId:", chatId);
-  console.log("message:", message);
-
-  try {
-    const ref = await addDoc(
-      collection(db, "chats", chatId, "messages"),
-      {
-        ...message,
-        timestamp: serverTimestamp(),
-      }
-    );
-
-    console.log("SUCCESS");
-    console.log(ref.id);
-    console.log(ref.path);
-    return ref;
-  } catch (err) {
-    console.error("Firestore Error:", err);
-    throw err;
-  }
+  },
+) {
+  return addDoc(messagesCollection(chatId), {
+    ...message,
+    timestamp: serverTimestamp(),
+  });
 }
+
 export function subscribeToMessages(
   chatId: string,
   onMessages: (messages: ChatMessage[]) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
 ): Unsubscribe {
-
-  const q = query(
-    messagesCollection(chatId),
-    orderBy("timestamp", "asc")
-  );
+  const q = query(messagesCollection(chatId), orderBy("timestamp", "asc"));
 
   return onSnapshot(
     q,
     (snapshot) => {
+      onMessages(
+        snapshot.docs.map((doc) => {
+          const data = doc.data();
 
-      const messages: ChatMessage[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-
-        return {
-          id: doc.id,
-          senderId: data.senderId ?? "",
-          senderName: data.senderName ?? "",
-          text: data.text ?? "",
-          timestamp: (data.timestamp as Timestamp) ?? null,
-        };
-      });
-
-      onMessages(messages);
+          return {
+            id: doc.id,
+            senderId: data.senderId ?? "",
+            senderName: data.senderName ?? "",
+            text: data.text ?? "",
+            timestamp: (data.timestamp as Timestamp) ?? null,
+          };
+        }),
+      );
     },
     (error) => {
-      console.error(error);
-
-      if (onError) {
-        onError(error);
-      }
-    }
+      onError?.(error);
+    },
   );
 }
-

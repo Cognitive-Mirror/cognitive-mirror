@@ -1,8 +1,20 @@
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Depends
+"""Cognitive Mirror API entry point.
 
-from app.schemas.auth import LoginRequest
+Authentication is handled by Firebase on the client; this service verifies the
+resulting ID token (see app/auth.py). There is deliberately no password
+endpoint here — credentials never reach this service.
+"""
+
+import logging
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.auth import verify_token
+from app.config import get_settings
+
+settings = get_settings()
+logging.basicConfig(level=settings.log_level)
 
 app = FastAPI(
     title="Cognitive Mirror",
@@ -12,7 +24,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -20,53 +32,27 @@ app.add_middleware(
 
 
 @app.get("/")
-def home():
+def home() -> dict:
     return {"message": "Hello Cognitive Mirror"}
 
 
-@app.post("/login")
-def login(data: LoginRequest):
-
-    accounts = {
-        "admin@cognitivemirror.ai": {
-            "password": "Admin123!",
-            "redirect": "/admin",
-        },
-        "manager@cognitivemirror.ai": {
-            "password": "Manager123!",
-            "redirect": "/manager",
-        },
-        "learner@cognitivemirror.ai": {
-            "password": "Learner123!",
-            "redirect": "/learner",
-        },
+@app.get("/health")
+def health() -> dict:
+    """Liveness probe. Reports configuration state without leaking secrets."""
+    return {
+        "status": "ok",
+        "environment": settings.environment,
+        "llm_provider": settings.llm_provider,
+        "llm_configured": bool(settings.llm_api_key),
     }
-
-    email = data.email.lower().strip()
-
-    if email in accounts:
-        account = accounts[email]
-
-        if account["password"] == data.password:
-            return {
-                "success": True,
-                "message": "FastAPI validated the password.",
-                "redirect": account["redirect"],
-            }
-
-    raise HTTPException(
-        status_code=401,
-        detail="Invalid username or password.",
-    )
 
 
 @app.get("/auth/me")
-def get_me(decoded_token: dict = Depends(verify_token)):
+def get_me(decoded_token: dict = Depends(verify_token)) -> dict:
+    """Return the authenticated user's identity from their verified ID token."""
     return {
         "uid": decoded_token.get("uid") or decoded_token.get("sub"),
         "email": decoded_token.get("email"),
         "name": decoded_token.get("name"),
         "picture": decoded_token.get("picture"),
-        "claims": decoded_token,
     }
-

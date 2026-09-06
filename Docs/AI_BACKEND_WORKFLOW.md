@@ -2,20 +2,57 @@
 
 > Master workflow document for the AI intelligence layer.
 > Every engineering task must reference this file.
-> Last updated: 2026-07-15
+> **Product charter: Impact AI Thesis — Internal Build Version v1.2.**
+> Last updated: 2026-09-06
+
+---
+
+## 0. Scope decision (2026-09-06)
+
+The project follows **one** thesis: *Impact AI Thesis — Internal Build Version
+v1.2* (the enterprise capability execution intelligence layer).
+
+Two earlier directions are **out of scope** and must not drive build decisions:
+
+| Document | Status |
+|---|---|
+| `Impact - AI Thesis - Internal.docx` (v1.2) | ✅ **The charter.** All work traces to this. |
+| `The Cognitive Mirror.pdf` (B2C cognitive-modelling EdTech) | ⛔ Superseded. Name retained; product direction dropped. |
+| `Master Build Prompt — Query-Adaptive Evidence GraphRAG.md` | 🔵 Deferred. Possible future component for Phase 7 RAG — not a separate product. |
 
 ---
 
 ## 1. Current Status
 
+Assessed 2026-09-06 against the actual contents of the repository.
+
 | Layer | Status | Detail |
 |-------|--------|--------|
-| Frontend | ✅ Functional | Next.js 16 login UI, role routing, mock auth |
-| Backend API | 🟡 Scaffold | Single `main.py`, hardcoded login, no structure |
-| Database | ❌ Missing | No ORM, no models, no migrations |
-| AI Layer | ❌ Missing | No agents, graphs, prompts, schemas |
-| DevOps | ❌ Missing | No Docker, no env config, no CI |
-| Documentation | 🟡 Scaffold | Files created but empty |
+| Frontend UI | ✅ Functional | Next.js 16, role routing, dashboards, theming. Production build passes. |
+| Frontend data | ❌ Mock | Every capability/evidence figure is hardcoded in components. Nothing reads the backend. |
+| Auth | ✅ Functional | Firebase Auth + Google sign-in; FastAPI verifies the ID token at `/auth/me`. |
+| Backend API | 🟡 Foundation | `main.py`, config, auth, schemas. No domain routers yet. |
+| Messaging | ✅ Functional | Firestore person-to-person chat. **Not AI** — see §9. |
+| Database | ❌ Missing | No ORM, no models, no migrations. All state is ephemeral. |
+| AI Layer | 🟡 Scaffold only | Prompts, output schemas and registry exist. **No LLM call is wired to any endpoint.** No graphs, no services. |
+| Capability State Model | 🟡 Draft | Schema in code + spec in `Docs/Architecture/Capability_State_Model.md`. Not persisted. |
+| Evaluation | ❌ Missing | No eval harness. AI output quality is unmeasured. |
+| DevOps | ❌ Missing | No Docker, no CI. |
+| Documentation | 🟡 Partial | This file + CSM spec + Wireframes. `AI_context.md`, `API_contract.md`, `System_architecture.md`, `Task.md`, `Project_memory.md` are still empty. |
+
+### 1.1 Incident: Phase 1 was deleted and recovered
+
+Commit `4145922` added the full Phase 1 backend. Commit `f30ff64`
+("Fixed the light theme bugs and overlapping") then **deleted all 22 backend
+files** while making unrelated CSS changes — almost certainly a bad merge. Every
+file survived on disk as 0 bytes, so the loss was invisible in the file tree.
+
+Recovered on 2026-09-06 from `f30ff64^`. This is why `node_modules/` was also
+untracked in the same change: dependency churn in git was a contributing factor
+to the merge conflicts.
+
+**Prevention:** run `git diff --stat` before committing, and never commit a
+frontend fix that touches `Backend/`.
 
 ---
 
@@ -192,13 +229,23 @@ Backend/
 
 | Module | File | Status |
 |--------|------|--------|
-| FastAPI app init | `Backend/main.py` | ✅ |
-| CORS middleware | `Backend/main.py` | ✅ |
-| Login endpoint (mock) | `Backend/main.py` | ✅ |
-| LoginRequest schema (inline) | `Backend/main.py` | ✅ |
+| FastAPI app init + CORS from config | `Backend/main.py` | ✅ |
+| Health endpoint | `Backend/main.py` | ✅ |
+| Settings (Pydantic) | `Backend/app/config.py` | ✅ |
+| Firebase token verification | `Backend/app/auth.py` | ✅ |
+| Capability State Model schemas | `Backend/app/schemas/capability.py` | ✅ draft |
+| Evidence / review schemas | `Backend/app/schemas/{evidence,review}.py` | ✅ |
+| AI output schemas | `Backend/ai/schemas/*.py` | ✅ |
+| Prompt templates | `Backend/ai/prompts/*.py` | ✅ |
+| Prompt registry + metadata | `Backend/ai/prompt_registry/registry.py` | ✅ |
+| Model-agnostic LLM factory | `Backend/ai/utils/llm_factory.py` | ✅ untested against a live provider |
 | Frontend login UI | `Frontend/src/components/LoginExperience.tsx` | ✅ |
-| Frontend auth lib | `Frontend/src/lib/auth.ts` | ✅ |
 | Role-based routing | `Frontend/src/app/[role]/page.tsx` | ✅ |
+| Workspace messaging | `Frontend/src/services/chatService.ts` | ✅ |
+
+**Removed 2026-09-06:** the `/login` endpoint and `mockAuthenticate` helper.
+They compared plaintext passwords server-side and were unreachable once Firebase
+sign-in landed.
 
 ---
 
@@ -324,6 +371,12 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 - Prompts are **never hardcoded** in business logic
 - Capability ≠ Knowledge; Completion ≠ Capability
 - Human-in-the-loop is **mandatory** for state changes
+- **No feature may be labelled "AI" in the UI unless a model actually runs.**
+  Thesis Risk 1 is "it becomes a chatbot"; overclaiming in the interface is the
+  first step toward that. The Firestore chat panel is *workspace messaging*, not
+  an assistant. Mock screens must carry a "Sample data" marker.
+- **API keys are server-side only.** No LLM key may appear anywhere under
+  `Frontend/`. `NEXT_PUBLIC_*` values ship to the browser and are public.
 
 ---
 
@@ -342,17 +395,46 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 ## 11. Progress Checklist
 
 - [x] Repository analysis
-- [x] Charter analysis
+- [x] Charter analysis — Impact AI Thesis v1.2 confirmed as the single charter
 - [x] Architecture design
 - [x] Workflow document (this file)
 - [x] Implementation plan approval
-- [x] Phase 1 — AI Foundation
-- [ ] Phase 2 — Evidence Intelligence
-- [ ] Phase 3 — Capability Engine
-- [ ] Phase 4 — Manager Validation
-- [ ] Phase 5 — Database Layer
-- [ ] Phase 6 — Evaluation
-- [ ] Phase 7 — RAG & Knowledge Graph
+- [x] Phase 1 — AI Foundation *(built, wiped by `f30ff64`, recovered 2026-09-06)*
+- [x] Capability State Model schema — **draft** (`Docs/Architecture/Capability_State_Model.md`)
+- [ ] Phase 2 — Evidence Intelligence · **not started**
+- [ ] Phase 3 — Capability Engine · **not started**
+- [ ] Phase 4 — Manager Validation · **not started**
+- [ ] Phase 5 — Database Layer · **not started** — blocks everything above
+- [ ] Phase 6 — Evaluation · **not started**
+- [ ] Phase 7 — RAG & Knowledge Graph · **not started**
+
+### 11.1 Honest summary
+
+Against the Impact thesis, roughly **10–15%** is built: authentication, a UI
+prototype, and the AI *scaffolding* (schemas, prompts, registry, factory).
+
+The thesis's stated critical path — Capability State Model → structured data
+layer → one grounded AI workflow → evaluation (§27 Priorities 1, 2, 4, 5) — is
+**one of four** done, and that one is a draft with no persistence.
+
+**No LLM call runs anywhere in this codebase today.** The `llm_factory` has
+never been exercised against a live provider.
+
+### 11.2 The next slice (do this before anything else)
+
+One vertical slice, one tenant, real persistence:
+
+1. Settle the open questions in `Docs/Architecture/Capability_State_Model.md` §9.
+2. Phase 5 first — SQLAlchemy models + Alembic migration for the CSM. Without a
+   database, nothing else can be real.
+3. Make learner evidence submission write to that database.
+4. Wire **one** LLM call: `evidence_review` (prompt and output schema already exist).
+5. Manager validation screen consumes that structured output and records a decision.
+6. Capability state updates from the validated decision; dashboards read real values.
+7. 5–10 evaluation cases for step 4: hallucination, weak-evidence over-rating,
+   ROI overclaiming.
+
+Everything else in Phases 2–7 waits.
 
 ---
 

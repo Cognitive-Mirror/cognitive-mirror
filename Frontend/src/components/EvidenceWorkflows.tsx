@@ -122,7 +122,8 @@ export function LearnerEvidencePage() {
               <li><strong className="t-fg">Reflection:</strong> what would you repeat or improve?</li>
             </ul>
             <div className="mt-6 rounded-xl p-3 text-xs leading-5" style={{ border: "1px solid rgba(99,102,241,0.2)", background: "rgba(99,102,241,0.06)", color: "var(--fg)" }}>
-              Your manager will receive AI-generated validation prompts with this submission.
+              Your manager reviews this submission and decides whether the capability was
+              demonstrated. Manager validation is always required.
             </div>
           </aside>
         </div>
@@ -153,7 +154,7 @@ export function ManagerEvidencePage() {
         <div className="mt-3 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
             <h1 className="text-4xl font-semibold tracking-[-.04em] t-fg">Review evidence with less effort.</h1>
-            <p className="mt-2 text-sm t-muted">AI pre-reads every submission and gives you the questions that matter.</p>
+            <p className="mt-2 text-sm t-muted">Read the evidence, then decide. Your validation is what makes the capability state real.</p>
           </div>
           <span className="inline-flex items-center gap-2 rounded-full bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-300">
             <CircleAlert className="h-4 w-4" />
@@ -201,7 +202,14 @@ export function ManagerEvidencePage() {
             <div className="mt-6 rounded-xl p-4" style={{ border: "1px solid rgba(99,102,241,0.2)", background: "rgba(99,102,241,0.06)" }}>
               <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--accent-fg)" }}>
                 <Sparkles className="h-4 w-4" />
-                AI evidence brief
+                Evidence brief
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                  style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+                  title="Static sample content. AI evidence review is not wired up yet — see Docs/AI_BACKEND_WORKFLOW.md Phase 2."
+                >
+                  Sample data
+                </span>
               </div>
               <p className="mt-3 text-sm leading-6 t-fg">{item.summary}</p>
               <p className="mt-3 text-xs" style={{ color: "var(--accent-fg)" }}>Demonstrates: {item.capability} · Evidence strength: {item.quality}</p>

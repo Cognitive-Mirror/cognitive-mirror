@@ -34,14 +34,7 @@ const firebaseConfig = {
   appId: requiredEnv.appId || "1:1234567890:web:1234567890",
 };
 
-const app =
-  getApps().length > 0
-    ? getApp()
-    : initializeApp(firebaseConfig);
+const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 
-console.log("Firebase Project:", app.options.projectId);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
-
-console.log("Firebase module loaded");
-console.log("db =", db);
