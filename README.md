@@ -27,6 +27,10 @@ pip install -r requirements.txt      # backend deps
 cp Backend/.env.example Backend/.env         # then fill in
 cp Frontend/.env.example Frontend/.env.local # then fill in
 
+cd Backend && python -m alembic upgrade head   # create the database
+python -m scripts.seed_demo                    # demo capability spine
+cd ..
+
 npm run dev                          # backend :8000 + frontend :3000
 ```
 
@@ -60,9 +64,12 @@ Nainika
 
 🚧 In Development — foundation stage.
 
-Working: authentication (Firebase + FastAPI token verification), role-based UI,
-workspace messaging, AI scaffolding (prompt registry, output schemas, LLM factory).
+Working: authentication, role-based UI reading live capability state, the full
+evidence loop (submit -> AI review -> manager validation -> capability state ->
+audit event), the Capability State Model scoring engine, D6 requirement
+resolution, database + migrations, workspace messaging.
 
-Not yet built: database persistence, any live LLM call, evidence review,
-capability state updates, evaluation harness. Dashboard figures are sample data.
+Not yet built: any live LLM call (no API key, so evidence review uses a
+deterministic fallback), evaluation harness for model output, RAG. Scoring
+constants are seeded placeholders, not calibrated.
 See [`Docs/AI_BACKEND_WORKFLOW.md`](Docs/AI_BACKEND_WORKFLOW.md) §11 for the honest status.

@@ -40,5 +40,13 @@ class User(Base, TenantScoped, Timestamped):
         String(120), nullable=True,
         doc="Job role identifier, used to resolve required_level (D6 layer 2).",
     )
+    program_ref: Mapped[str | None] = mapped_column(
+        String(120), nullable=True,
+        doc=(
+            "Programme the user is currently enrolled in, used to resolve "
+            "required_level (D6 layer 3). A single field is a simplification; "
+            "real cohort membership belongs in its own table."
+        ),
+    )
 
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

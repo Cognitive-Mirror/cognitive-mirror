@@ -44,10 +44,13 @@ export function RolePageShell({
         style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)", backdropFilter: "blur(12px)" }}
       >
         <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-5 lg:px-8">
-          <Link href={`/${role}`} className="flex items-center gap-2 text-sm font-semibold t-fg">
+          {/* ProfileMenu renders its own link; nesting anchors breaks hydration. */}
+          <div className="flex items-center gap-2">
             <ProfileMenu role={role} />
-            <span>Cognitive Mirror</span>
-          </Link>
+            <Link href={`/${role}`} className="text-sm font-semibold t-fg">
+              Cognitive Mirror
+            </Link>
+          </div>
           <ThemeToggle />
         </div>
       </header>

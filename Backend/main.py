@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.auth import verify_token
 from app.config import get_settings
 from app.database import dispose_engine
+from app.routers import capabilities as capabilities_router
 from app.routers import evidence as evidence_router
 
 settings = get_settings()
@@ -34,6 +35,7 @@ app = FastAPI(
 )
 
 app.include_router(evidence_router.router)
+app.include_router(capabilities_router.router)
 
 app.add_middleware(
     CORSMiddleware,

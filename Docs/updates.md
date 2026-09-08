@@ -133,3 +133,38 @@ ADR - Docs/Decisions/ADR-001-agent-framework.md. Use LangGraph; do not adopt a s
 
 STILL NOT DONE - no LLM call has ever run against a live provider (no API key), every scoring
         constant is an unvalidated placeholder, and the frontend still shows hardcoded data.
+
+---------------------------------------------------------------------------------------------
+08-09-2026 (second pass)
+D6 - built the three-layer requirement resolver in Backend/app/services/. required_level is
+        now actually resolved (spine_default < tenant_role < program_target) instead of being
+        hardcoded to competent, and every resolution carries source, set_by and rationale.
+        Added User.program_ref (with migration) - layer 3 could not resolve without it.
+        12 tests cover precedence, scoping, supersession, future-dating and tenant isolation.
+
+SPINE - Backend/scripts/seed_demo.py seeds a demo tenant: 3 capabilities with decay classes
+        and KPI links, 3 users, and 5 requirements spanning all three D6 layers so the
+        precedence is demonstrable. Idempotent. Run with: python -m scripts.seed_demo
+
+API - added the capabilities router: GET /capabilities, /capabilities/me,
+        /capabilities/learner/{id} (manager or self only), /capabilities/team.
+        The team endpoint returns coverage and the full distribution and deliberately has no
+        average level field - there is a test asserting it never appears.
+
+UI - CapabilityWorkspace now reads live state instead of hardcoded numbers. attained_level,
+        current_support_level and the confidence band are rendered as three separate readings;
+        a capability whose evidence has aged shows "revalidation due" with an explicit note
+        that this is not a downgrade. Removed the invented panels (assessment performance,
+        scenario judgement, reflection quality, improvement/stagnation) - nothing on the
+        screen is displayed unless the backend actually computes it.
+
+BUGFIX - fixed a hydration error present in all three page headers: ProfileMenu renders its own
+        Link and was nested inside another Link, producing invalid nested anchors. Verified in
+        the browser: document.querySelectorAll('a a').length is now 0.
+
+TESTS - 67 passing (was 44).
+
+NOT VERIFIED - the signed-in UI has never been seen with real data. There are no Firebase
+        credentials in this environment, so only the unauthenticated path was checked in the
+        browser. The seeded users also use placeholder Firebase uids and will not match a real
+        sign-in yet.

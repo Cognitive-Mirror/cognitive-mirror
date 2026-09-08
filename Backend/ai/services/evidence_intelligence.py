@@ -42,6 +42,7 @@ from app.schemas.capability import (
 from app.schemas.evidence import EvidenceStrengthBand
 from app.schemas.review import ReviewDecision
 from app.scoring import constants as C
+from app.services.requirement_resolver import resolve_required_level
 from app.scoring.engine import (
     ScoredEvidence,
     apply_step_limit,
@@ -224,6 +225,14 @@ async def recompute_capability_state(
     if cap_note:
         reason = f"{reason} {cap_note}"
 
+    # D6: required_level is resolved through the three layers, with provenance.
+    requirement = await resolve_required_level(
+        session,
+        tenant_id=tenant_id,
+        capability_id=capability_id,
+        subject_id=learner_id,
+    )
+
     if record is None:
         # Column defaults only apply at INSERT, and _next_action reads these
         # fields before the flush, so set them explicitly here.
@@ -232,13 +241,14 @@ async def recompute_capability_state(
             capability_id=capability_id,
             subject_type=SubjectType.LEARNER,
             subject_id=learner_id,
-            required_level=CapabilityLevel.COMPETENT,
-            required_level_source=RequiredLevelSource.SPINE_DEFAULT,
             attained_level=CapabilityLevel.NOVICE,
             current_support_level=CapabilityLevel.NOVICE,
             status=CapabilityStatus.NOT_STARTED,
         )
         session.add(record)
+
+    record.required_level = requirement.level
+    record.required_level_source = requirement.source
 
     record.attained_level = attained
     record.current_support_level = score.current_support_level

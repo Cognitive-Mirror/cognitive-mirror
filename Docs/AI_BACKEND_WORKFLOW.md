@@ -3,7 +3,7 @@
 > Master workflow document for the AI intelligence layer.
 > Every engineering task must reference this file.
 > **Product charter: Impact AI Thesis — Internal Build Version v1.2.**
-> Last updated: 2026-09-08
+> Last updated: 2026-09-08 (second pass)
 
 ---
 
@@ -29,14 +29,14 @@ Assessed 2026-09-08 against the actual contents of the repository.
 | Layer | Status | Detail |
 |-------|--------|--------|
 | Frontend UI | ✅ Functional | Next.js 16, role routing, dashboards, theming. Production build passes. |
-| Frontend data | ❌ Mock | Every capability/evidence figure is still hardcoded. The backend API now exists but the UI does not call it. **This is the next gap.** |
+| Frontend data | 🟡 Partly live | The role workspace now reads `/capabilities/me` and `/capabilities/team` and renders real state. The evidence submission and manager validation screens are still hardcoded. |
 | Auth | ✅ Functional | Firebase Auth + Google sign-in; FastAPI verifies the ID token at `/auth/me`. |
-| Backend API | 🟡 Growing | Auth, health, and the evidence router (`POST /evidence`, `GET /evidence/pending`, `POST /evidence/{id}/validate`). No capability or reporting routers yet. |
+| Backend API | 🟡 Growing | 10 endpoints: auth, health, evidence (submit / pending / validate) and capabilities (spine / me / learner / team). No reporting or admin routers yet. |
 | Messaging | ✅ Functional | Firestore person-to-person chat. **Not AI** — see §9. |
 | Database | ✅ Functional | SQLAlchemy async ORM, 8 tables, Alembic baseline migration (round-trip verified). SQLite in dev, PostgreSQL in prod. |
 | AI Layer | 🟡 Wired, unproven | Evidence review LangGraph, service and API are built and tested end-to-end. **Still never run against a live provider** — no API key, so it takes the deterministic fallback path. |
-| Capability State Model | ✅ Implemented | All 6 open questions settled (CSM §9). Scoring engine in `app/scoring/`, persisted in `capability_states`, audited in `capability_state_events`. Constants still uncalibrated. |
-| Evaluation | 🟡 Partial | 44 tests cover the scoring model and the evidence flow. **No LLM output quality harness yet** — that is Phase 6. |
+| Capability State Model | ✅ Implemented | All 6 open questions settled (CSM §9), including D6 three-layer requirement resolution. Scoring engine in `app/scoring/`, persisted and audited. Constants still uncalibrated. |
+| Evaluation | 🟡 Partial | 67 tests cover scoring, the evidence flow, D6 resolution and the capability API. **No LLM output quality harness yet** — that is Phase 6. |
 | DevOps | ❌ Missing | No Docker, no CI. |
 | Documentation | 🟡 Partial | This file + CSM spec + Wireframes. `AI_context.md`, `API_contract.md`, `System_architecture.md`, `Task.md`, `Project_memory.md` are still empty. |
 
@@ -410,7 +410,7 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 
 ### 11.1 Honest summary
 
-Against the Impact thesis, roughly **35-40%** is built.
+Against the Impact thesis, roughly **45%** is built.
 
 **Real and tested (44 passing tests):**
 - Capability State Model: all six open questions settled, implemented as a pure
@@ -427,7 +427,7 @@ Against the Impact thesis, roughly **35-40%** is built.
   structured-output binding and the guardrails are untested against a real model.
 - **Every scoring constant is a seeded placeholder.** The structure is
   defensible; the numbers are not yet earned. See CSM §11.
-- **The frontend still shows hardcoded data.** The API exists; nothing calls it.
+- **The signed-in UI has never been seen with real data.** The role workspace calls the API and renders correctly when unauthenticated, but there are no Firebase credentials in this environment, so the populated view is unverified. Evidence submission and manager validation screens are still hardcoded.
 - No RAG, no evaluation harness for model output quality, no agents (see
   `Docs/Decisions/ADR-001-agent-framework.md` for why that is deliberate).
 
@@ -437,17 +437,18 @@ Against the Impact thesis, roughly **35-40%** is built.
    `LLM_API_KEY` and run the evidence review graph against the provider. Until
    this happens the AI layer is unproven. Expect the structured-output binding
    to need work.
-2. **Connect the frontend to the API.** Replace the hardcoded figures in
-   `CapabilityWorkspace.tsx` and `EvidenceWorkflows.tsx` with calls to
-   `POST /evidence`, `GET /evidence/pending` and
-   `POST /evidence/{id}/validate`. Show `attained_level`,
-   `current_support_level` and the confidence band as distinct things - the
-   whole D1 argument is lost if the UI collapses them.
-3. **Seed a real Capability Spine** for one tenant, and implement the D6
-   three-layer requirement resolution (the table exists; the resolver does not).
-4. **Phase 6 evaluation harness** for model output: hallucination,
+2. **Verify the signed-in UI.** Add Firebase credentials to
+   `Frontend/.env.local`, sign in as the seeded learner, and confirm the
+   capability rows render. The unauthenticated path is verified; the populated
+   one is not.
+3. **Wire the remaining screens.** `EvidenceWorkflows.tsx` still posts nowhere.
+   Connect the learner form to `POST /evidence` and the manager screen to
+   `GET /evidence/pending` + `POST /evidence/{id}/validate`.
+4. **Map seeded users to real Firebase uids.** `scripts/seed_demo.py` uses
+   placeholder uids, so a real sign-in will not match a seeded learner yet.
+5. **Phase 6 evaluation harness** for model output: hallucination,
    weak-evidence over-rating, ROI overclaiming.
-5. **Start logging manager override rate on day one of real use.** It is the
+6. **Start logging manager override rate on day one of real use.** It is the
    primary calibration signal for every seeded constant.
 
 ## 12. Future Improvements
