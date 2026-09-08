@@ -21,10 +21,16 @@ langchain-core>=0.3.0
 langgraph>=0.2.0
 langchain-nvidia-ai-endpoints>=0.3.0
 
-# --- Database (Phase 5 — not yet implemented) ---
+# --- Database ---
 sqlalchemy>=2.0
 alembic>=1.13
-asyncpg>=0.29
+greenlet>=3.0
+aiosqlite>=0.20   # development default
+asyncpg>=0.29     # production (PostgreSQL)
 
 # --- HTTP ---
 httpx>=0.27
+
+# --- Test ---
+pytest>=8.0
+pytest-asyncio>=0.23

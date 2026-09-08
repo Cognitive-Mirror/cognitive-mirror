@@ -3,7 +3,7 @@
 > Master workflow document for the AI intelligence layer.
 > Every engineering task must reference this file.
 > **Product charter: Impact AI Thesis — Internal Build Version v1.2.**
-> Last updated: 2026-09-06
+> Last updated: 2026-09-08
 
 ---
 
@@ -24,19 +24,19 @@ Two earlier directions are **out of scope** and must not drive build decisions:
 
 ## 1. Current Status
 
-Assessed 2026-09-06 against the actual contents of the repository.
+Assessed 2026-09-08 against the actual contents of the repository.
 
 | Layer | Status | Detail |
 |-------|--------|--------|
 | Frontend UI | ✅ Functional | Next.js 16, role routing, dashboards, theming. Production build passes. |
-| Frontend data | ❌ Mock | Every capability/evidence figure is hardcoded in components. Nothing reads the backend. |
+| Frontend data | ❌ Mock | Every capability/evidence figure is still hardcoded. The backend API now exists but the UI does not call it. **This is the next gap.** |
 | Auth | ✅ Functional | Firebase Auth + Google sign-in; FastAPI verifies the ID token at `/auth/me`. |
-| Backend API | 🟡 Foundation | `main.py`, config, auth, schemas. No domain routers yet. |
+| Backend API | 🟡 Growing | Auth, health, and the evidence router (`POST /evidence`, `GET /evidence/pending`, `POST /evidence/{id}/validate`). No capability or reporting routers yet. |
 | Messaging | ✅ Functional | Firestore person-to-person chat. **Not AI** — see §9. |
-| Database | ❌ Missing | No ORM, no models, no migrations. All state is ephemeral. |
-| AI Layer | 🟡 Scaffold only | Prompts, output schemas and registry exist. **No LLM call is wired to any endpoint.** No graphs, no services. |
-| Capability State Model | 🟡 Draft | Schema in code + spec in `Docs/Architecture/Capability_State_Model.md`. Not persisted. |
-| Evaluation | ❌ Missing | No eval harness. AI output quality is unmeasured. |
+| Database | ✅ Functional | SQLAlchemy async ORM, 8 tables, Alembic baseline migration (round-trip verified). SQLite in dev, PostgreSQL in prod. |
+| AI Layer | 🟡 Wired, unproven | Evidence review LangGraph, service and API are built and tested end-to-end. **Still never run against a live provider** — no API key, so it takes the deterministic fallback path. |
+| Capability State Model | ✅ Implemented | All 6 open questions settled (CSM §9). Scoring engine in `app/scoring/`, persisted in `capability_states`, audited in `capability_state_events`. Constants still uncalibrated. |
+| Evaluation | 🟡 Partial | 44 tests cover the scoring model and the evidence flow. **No LLM output quality harness yet** — that is Phase 6. |
 | DevOps | ❌ Missing | No Docker, no CI. |
 | Documentation | 🟡 Partial | This file + CSM spec + Wireframes. `AI_context.md`, `API_contract.md`, `System_architecture.md`, `Task.md`, `Project_memory.md` are still empty. |
 
@@ -401,42 +401,54 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 - [x] Implementation plan approval
 - [x] Phase 1 — AI Foundation *(built, wiped by `f30ff64`, recovered 2026-09-06)*
 - [x] Capability State Model schema — **draft** (`Docs/Architecture/Capability_State_Model.md`)
-- [ ] Phase 2 — Evidence Intelligence · **not started**
-- [ ] Phase 3 — Capability Engine · **not started**
-- [ ] Phase 4 — Manager Validation · **not started**
-- [ ] Phase 5 — Database Layer · **not started** — blocks everything above
+- [x] Phase 2 — Evidence Intelligence · graph, guardrails, service, API, tests
+- [x] Phase 3 — Capability Engine · scoring engine implementing CSM D1-D5
+- [x] Phase 4 — Manager Validation · endpoint, override logging, audit events
+- [x] Phase 5 — Database Layer · ORM, migrations, tenant-scoped models
 - [ ] Phase 6 — Evaluation · **not started**
 - [ ] Phase 7 — RAG & Knowledge Graph · **not started**
 
 ### 11.1 Honest summary
 
-Against the Impact thesis, roughly **10–15%** is built: authentication, a UI
-prototype, and the AI *scaffolding* (schemas, prompts, registry, factory).
+Against the Impact thesis, roughly **35-40%** is built.
 
-The thesis's stated critical path — Capability State Model → structured data
-layer → one grounded AI workflow → evaluation (§27 Priorities 1, 2, 4, 5) — is
-**one of four** done, and that one is a draft with no persistence.
+**Real and tested (44 passing tests):**
+- Capability State Model: all six open questions settled, implemented as a pure
+  scoring engine, persisted, and audited on every change.
+- The full Phase 2 loop: submit evidence -> AI review -> manager validation ->
+  capability state update -> append-only audit event.
+- Governance enforced in code, not just prose: unvalidated evidence scores zero,
+  confidence is capped without manager validation, learners cannot validate
+  their own evidence, tenant comes from the token and never the payload.
 
-**No LLM call runs anywhere in this codebase today.** The `llm_factory` has
-never been exercised against a live provider.
+**Honest gaps:**
+- **No LLM call has ever run against a live provider.** There is no API key, so
+  every review so far has come from the deterministic fallback. The prompt, the
+  structured-output binding and the guardrails are untested against a real model.
+- **Every scoring constant is a seeded placeholder.** The structure is
+  defensible; the numbers are not yet earned. See CSM §11.
+- **The frontend still shows hardcoded data.** The API exists; nothing calls it.
+- No RAG, no evaluation harness for model output quality, no agents (see
+  `Docs/Decisions/ADR-001-agent-framework.md` for why that is deliberate).
 
-### 11.2 The next slice (do this before anything else)
+### 11.2 The next slice
 
-One vertical slice, one tenant, real persistence:
-
-1. Settle the open questions in `Docs/Architecture/Capability_State_Model.md` §9.
-2. Phase 5 first — SQLAlchemy models + Alembic migration for the CSM. Without a
-   database, nothing else can be real.
-3. Make learner evidence submission write to that database.
-4. Wire **one** LLM call: `evidence_review` (prompt and output schema already exist).
-5. Manager validation screen consumes that structured output and records a decision.
-6. Capability state updates from the validated decision; dashboards read real values.
-7. 5–10 evaluation cases for step 4: hallucination, weak-evidence over-rating,
-   ROI overclaiming.
-
-Everything else in Phases 2–7 waits.
-
----
+1. **Get one real model call working.** Put a key in `Backend/.env` as
+   `LLM_API_KEY` and run the evidence review graph against the provider. Until
+   this happens the AI layer is unproven. Expect the structured-output binding
+   to need work.
+2. **Connect the frontend to the API.** Replace the hardcoded figures in
+   `CapabilityWorkspace.tsx` and `EvidenceWorkflows.tsx` with calls to
+   `POST /evidence`, `GET /evidence/pending` and
+   `POST /evidence/{id}/validate`. Show `attained_level`,
+   `current_support_level` and the confidence band as distinct things - the
+   whole D1 argument is lost if the UI collapses them.
+3. **Seed a real Capability Spine** for one tenant, and implement the D6
+   three-layer requirement resolution (the table exists; the resolver does not).
+4. **Phase 6 evaluation harness** for model output: hallucination,
+   weak-evidence over-rating, ROI overclaiming.
+5. **Start logging manager override rate on day one of real use.** It is the
+   primary calibration signal for every seeded constant.
 
 ## 12. Future Improvements
 

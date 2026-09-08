@@ -10,6 +10,22 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
+class EvidenceStrengthBand(StrEnum):
+    """How strongly an evidence item demonstrates capability.
+
+    Canonical domain enum. `ai.schemas.evidence_review.EvidenceStrength` aliases
+    this so the AI output contract and the scoring engine cannot drift apart.
+
+    WEAK is worth zero scoring points by design (thesis 16.2): it triggers
+    developmental guidance, never progression.
+    """
+
+    WEAK = "weak"
+    MODERATE = "moderate"
+    STRONG = "strong"
+    EXCEPTIONAL = "exceptional"
+
+
 class EvidenceType(StrEnum):
     """Categories of evidence a learner can submit."""
 

@@ -69,7 +69,12 @@ class Settings(BaseSettings):
 
     # ─── Database ───
     database_url: str = Field(
-        default="postgresql+asyncpg://postgres:postgres@localhost:5432/cognitive_mirror",
+        default="sqlite+aiosqlite:///./cognitive_mirror.db",
+        description=(
+            "SQLite by default so the stack runs with no infrastructure. "
+            "Production uses PostgreSQL: "
+            "postgresql+asyncpg://user:pass@host:5432/cognitive_mirror"
+        ),
     )
 
     # ─── Application ───

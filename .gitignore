@@ -245,3 +245,11 @@ Backend/serviceAccountKey.json
 *-serviceAccount*.json
 *.pem
 *.key
+
+# Local development database
+*.db
+*.sqlite3
+cognitive_mirror.db
+
+# Editor / tooling
+.claude/

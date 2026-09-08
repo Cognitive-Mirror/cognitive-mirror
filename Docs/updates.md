@@ -76,3 +76,60 @@ UI - relabelled the chat panel from "Private AI Assistant" to "Workspace message
         It is Firestore person-to-person chat with no AI in it. Also corrected two other
         copy strings that claimed AI review was happening, and marked the manager
         evidence brief as "Sample data".
+
+---------------------------------------------------------------------------------------------
+08-09-2026
+CSM - settled all six open questions in Docs/Architecture/Capability_State_Model.md (now v0.2).
+        They are answered as one system: a single currency (recency-weighted, validation-gated
+        evidence points) drives level, confidence, decay and recency together.
+        D1 Decay applies to CONFIDENCE, not level. attained_level is a historical fact that
+           never falls on its own; current_support_level is what decayed evidence supports now.
+           Divergence flags revalidation instead of downgrading someone.
+        D2 Aggregates never average an ordinal scale. Headline metric is validated_coverage;
+           the full distribution is always carried alongside it.
+        D3 Evidence never expires; its weight decays on the same curve. Weak evidence and
+           unvalidated evidence are both worth exactly zero points.
+        D4 Progression needs points AND independent contexts (different context_ref, 14+ days
+           apart). Three submissions from one project week are one demonstration.
+        D5 Confidence formula quantified, with a HARD CEILING of 0.40 without manager
+           validation. Capability state cannot become confident without a human.
+        D6 required_level resolves through three layers (spine default < tenant role <
+           program target), each carrying source, set_by, effective_from and rationale.
+        Every constant is marked [structural] or [seeded]; section 11 says how each seeded
+        value gets earned from data. These still need Yoganarayanan's review.
+
+PHASE 3 - built the scoring engine in Backend/app/scoring/ as PURE functions (no I/O, no LLM)
+        so any recalibration can be replayed against historical data before it ships.
+        All tunable numbers live in constants.py under one SCORING_MODEL_VERSION.
+
+PHASE 5 - database layer: SQLAlchemy async ORM, 8 tenant-scoped tables, Alembic baseline
+        migration with a verified downgrade/upgrade round-trip. SQLite for local development
+        (no infrastructure needed), PostgreSQL for production - a DATABASE_URL change only.
+        Added StrEnumType and UTCDateTime column types; plain String/DateTime columns were
+        returning raw strings and naive datetimes and silently breaking level arithmetic.
+
+PHASE 2 - evidence intelligence: LangGraph pipeline triage -> review -> guardrails.
+        triage screens out unreviewable submissions before any model call (cost control).
+        guardrails enforces governance the model is asked for but must not be trusted on:
+        causal/ROI language is detected and flagged, human review is the default, weak
+        evidence cannot be high confidence.
+        The graph runs WITHOUT an API key via a deterministic fallback that is capped at
+        moderate strength and always routed to a human, so the workflow is testable now.
+
+PHASE 4 - manager validation endpoint. The only path that can move attained_level.
+        Learners are blocked from validating their own evidence. Manager override of the AI
+        strength is recorded on every row - it is the primary calibration signal.
+
+API - POST /evidence, GET /evidence/pending, POST /evidence/{id}/validate. tenant_id is taken
+        from the verified token and never from the request body.
+
+TESTS - 44 passing. Each one pins a decision from CSM section 9 so a constant change cannot
+        silently break a governance commitment. Includes an end-to-end test of
+        submit -> AI review -> manager validation -> capability state -> audit event.
+
+ADR - Docs/Decisions/ADR-001-agent-framework.md. Use LangGraph; do not adopt a second agent
+        framework; do not build agents yet. Includes the rejection reasoning for CrewAI,
+        AutoGen and the OpenAI Agents SDK, and the staged migration path to Stage 3.
+
+STILL NOT DONE - no LLM call has ever run against a live provider (no API key), every scoring
+        constant is an unvalidated placeholder, and the frontend still shows hardcoded data.

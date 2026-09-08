@@ -38,6 +38,35 @@ class CapabilityLevel(StrEnum):
     EXPERT = "expert"
 
 
+class CapabilityClass(StrEnum):
+    """Decay archetype for a capability (CSM D1).
+
+    Determines the base half-life. Procedural skills retain best over non-use;
+    interpersonal, context-dependent ones retain worst.
+    """
+
+    PROCEDURAL = "procedural"
+    ANALYTICAL = "analytical"
+    INTERPERSONAL = "interpersonal"
+
+
+class ConfidenceBand(StrEnum):
+    """Reporting band for state_confidence (CSM D5)."""
+
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
+    REVALIDATION_DUE = "revalidation_due"
+
+
+class RequiredLevelSource(StrEnum):
+    """Which layer resolved required_level (CSM D6). Lowest to highest precedence."""
+
+    SPINE_DEFAULT = "spine_default"
+    TENANT_ROLE = "tenant_role"
+    PROGRAM_TARGET = "program_target"
+
+
 class CapabilityStatus(StrEnum):
     """Lifecycle status of a capability for a specific subject."""
 
@@ -47,6 +76,7 @@ class CapabilityStatus(StrEnum):
     UNDER_REVIEW = "under_review"
     VALIDATED = "validated"
     NEEDS_IMPROVEMENT = "needs_improvement"
+    REVALIDATION_DUE = "revalidation_due"
 
 
 class SubjectType(StrEnum):
@@ -254,13 +284,31 @@ class CapabilityState(BaseModel):
     role_id: str | None = Field(default=None)
     program_id: str | None = Field(default=None)
 
-    # Required vs demonstrated — the core comparison (§12)
+    # Required vs attained vs currently-supported — the core comparison (§12, D1)
     required_level: CapabilityLevel = Field(
-        ..., description="Level the role/KPI requires.",
+        ..., description="Level the role/KPI requires. Resolved via D6.",
     )
-    demonstrated_level: CapabilityLevel = Field(
+    required_level_source: RequiredLevelSource = Field(
+        default=RequiredLevelSource.SPINE_DEFAULT,
+        description="Which layer set required_level. Never a bare number (D6).",
+    )
+    attained_level: CapabilityLevel = Field(
         default=CapabilityLevel.NOVICE,
-        description="Level actually evidenced and validated.",
+        description=(
+            "Highest level ever evidenced AND manager-validated. A historical "
+            "fact; never decays on its own (D1)."
+        ),
+    )
+    current_support_level: CapabilityLevel = Field(
+        default=CapabilityLevel.NOVICE,
+        description=(
+            "Level that present-day, decayed evidence supports. May fall below "
+            "attained_level, which flags revalidation rather than a downgrade (D1)."
+        ),
+    )
+    capability_class: CapabilityClass = Field(
+        default=CapabilityClass.ANALYTICAL,
+        description="Decay archetype; sets the base half-life (D1).",
     )
     status: CapabilityStatus = Field(default=CapabilityStatus.NOT_STARTED)
 
@@ -275,7 +323,30 @@ class CapabilityState(BaseModel):
     # Overall interpretation
     state_confidence: float = Field(
         default=0.0, ge=0.0, le=1.0,
-        description="Confidence that demonstrated_level reflects reality.",
+        description=(
+            "Confidence that attained_level reflects reality today. Capped at "
+            "UNVALIDATED_CONFIDENCE_CEILING without manager validation (D5)."
+        ),
+    )
+    confidence_band: ConfidenceBand = Field(default=ConfidenceBand.REVALIDATION_DUE)
+    validated_points: float = Field(
+        default=0.0, ge=0.0,
+        description="Recency-weighted points from manager-validated evidence (D3).",
+    )
+    provisional_points: float = Field(
+        default=0.0, ge=0.0,
+        description=(
+            "Points from evidence awaiting validation. Shown as 'pending' in the "
+            "UI; never feeds attained_level."
+        ),
+    )
+    independent_contexts: int = Field(
+        default=0, ge=0,
+        description="Distinct validated contexts, per the D4 independence rule.",
+    )
+    scoring_model_version: str = Field(
+        default="",
+        description="Scoring constants version that produced this state (§11).",
     )
     recommended_next_action: str = Field(
         default="",
@@ -290,7 +361,7 @@ class CapabilityState(BaseModel):
     def gap(self) -> int:
         """Levels between required and demonstrated. Positive means a gap remains."""
         order = list(CapabilityLevel)
-        return order.index(self.required_level) - order.index(self.demonstrated_level)
+        return order.index(self.required_level) - order.index(self.attained_level)
 
     @property
     def is_manager_validated(self) -> bool:
@@ -302,7 +373,7 @@ class CapabilityUpdate(BaseModel):
     """A proposed change to a capability state.
 
     AI may *propose* an update; it never applies one. Any change to
-    demonstrated_level requires manager approval (§7.7, §16.5, §24).
+    attained_level requires manager approval (§7.7, §16.5, §24).
     """
 
     tenant_id: str

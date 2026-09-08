@@ -5,18 +5,13 @@ a piece of learner-submitted evidence. Every field is typed
 and constrained — no free-form text responses.
 """
 
-from enum import StrEnum
-
 from pydantic import BaseModel, Field
 
+from app.schemas.evidence import EvidenceStrengthBand
 
-class EvidenceStrength(StrEnum):
-    """How strongly the evidence demonstrates capability."""
-
-    WEAK = "weak"
-    MODERATE = "moderate"
-    STRONG = "strong"
-    EXCEPTIONAL = "exceptional"
+# Single source of truth: the AI output contract and the scoring engine share
+# one strength enum so they cannot drift apart.
+EvidenceStrength = EvidenceStrengthBand
 
 
 class CapabilitySignal(BaseModel):
