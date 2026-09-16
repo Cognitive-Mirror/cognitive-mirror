@@ -53,3 +53,17 @@ class EvidenceReviewOutput(BaseModel):
     reasoning: str = Field(
         ..., description="AI reasoning chain — supports auditability"
     )
+    rubric_citations: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Slugs of the approved rubric clauses this judgement rests on, e.g. "
+            "['CAP-DS.RUBRIC.STRONG']. Thesis 23 asks of every AI output whether "
+            "it used only approved sources; this field is how that question is "
+            "answered from the data. A review citing nothing is ungrounded and "
+            "is forced to human review."
+        ),
+    )
+    grounded: bool = Field(
+        default=False,
+        description="Whether approved rubric text was in the reviewer's context.",
+    )

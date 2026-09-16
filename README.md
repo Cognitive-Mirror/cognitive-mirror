@@ -28,7 +28,8 @@ cp Backend/.env.example Backend/.env         # then fill in
 cp Frontend/.env.example Frontend/.env.local # then fill in
 
 cd Backend && python -m alembic upgrade head   # create the database
-python -m scripts.seed_demo                    # demo capability spine
+python -m scripts.seed_demo                    # capabilities, users, requirements
+python -m scripts.seed_knowledge               # approved rubric corpus for RAG
 cd ..
 
 npm run dev                          # backend :8000 + frontend :3000
@@ -69,7 +70,11 @@ evidence loop (submit -> AI review -> manager validation -> capability state ->
 audit event), the Capability State Model scoring engine, D6 requirement
 resolution, database + migrations, workspace messaging.
 
-Not yet built: any live LLM call (no API key, so evidence review uses a
-deterministic fallback), evaluation harness for model output, RAG. Scoring
-constants are seeded placeholders, not calibrated.
+Working also: retrieval grounding — evidence review is assessed against approved
+Capability Spine rubric clauses and cites them (ARC, vendored at
+`Backend/hybrid_rag/`; see [ADR-002](Docs/Decisions/ADR-002-retrieval-grounding.md)).
+
+Not yet built: any live LLM call (no API key, so review uses a deterministic
+fallback), evaluation harness for model output. Scoring constants and retrieval
+fusion weights are seeded placeholders, not calibrated against data.
 See [`Docs/AI_BACKEND_WORKFLOW.md`](Docs/AI_BACKEND_WORKFLOW.md) §11 for the honest status.

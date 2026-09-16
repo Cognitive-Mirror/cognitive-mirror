@@ -21,6 +21,10 @@ langchain-core>=0.3.0
 langgraph>=0.2.0
 langchain-nvidia-ai-endpoints>=0.3.0
 
+# --- Retrieval (ARC hybrid RAG, vendored at Backend/hybrid_rag) ---
+scikit-learn>=1.4        # LSA fallback embedder; no network, no model download
+# sentence-transformers>=3.0   # optional: EMBEDDING_PROVIDER=local
+
 # --- Database ---
 sqlalchemy>=2.0
 alembic>=1.13

@@ -17,6 +17,7 @@ from app.config import get_settings
 from app.database import dispose_engine
 from app.routers import capabilities as capabilities_router
 from app.routers import evidence as evidence_router
+from app.routers import knowledge as knowledge_router
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
@@ -36,6 +37,7 @@ app = FastAPI(
 
 app.include_router(evidence_router.router)
 app.include_router(capabilities_router.router)
+app.include_router(knowledge_router.router)
 
 app.add_middleware(
     CORSMiddleware,

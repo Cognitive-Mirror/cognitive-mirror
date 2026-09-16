@@ -13,6 +13,7 @@ Model map:
   ManagerValidation       the human decision. The trust anchor.
   CapabilityStateRecord   current scored state per (subject, capability)
   CapabilityStateEvent    append-only audit log (Update Rule 6)
+  KnowledgeDocument       approved Spine knowledge the AI may retrieve
 """
 
 from app.models.audit import CapabilityStateEvent
@@ -22,6 +23,7 @@ from app.models.capability import (
     CapabilityStateRecord,
 )
 from app.models.evidence import Evidence, EvidenceReview, ManagerValidation
+from app.models.knowledge import KnowledgeDocument, KnowledgeKind
 from app.models.user import User
 
 __all__ = [
@@ -33,4 +35,6 @@ __all__ = [
     "EvidenceReview",
     "ManagerValidation",
     "CapabilityStateEvent",
+    "KnowledgeDocument",
+    "KnowledgeKind",
 ]

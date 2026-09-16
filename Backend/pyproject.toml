@@ -22,6 +22,9 @@ dependencies = [
     "langgraph>=0.2.0",
     "langchain-nvidia-ai-endpoints>=0.3.0",
 
+    # --- Retrieval (ARC, vendored at Backend/hybrid_rag) ---
+    "scikit-learn>=1.4",
+
     # --- Database ---
     "sqlalchemy>=2.0",
     "alembic>=1.13",

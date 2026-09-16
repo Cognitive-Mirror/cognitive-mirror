@@ -27,6 +27,14 @@ class EvidenceReviewState(TypedDict, total=False):
     content: str
     context: str
 
+    # --- grounding (retrieved before the graph runs) ---
+    rubric_text: str
+    """Approved rubric clauses, rendered for the prompt."""
+    rubric_slugs: list[str]
+    """Slugs supplied to the model. A citation outside this set is a fabrication."""
+    grounded: bool
+    grounding_reason: str
+
     # --- outputs ---
     review: EvidenceReviewOutput | None
     guardrail_notes: list[str]
@@ -34,6 +42,7 @@ class EvidenceReviewState(TypedDict, total=False):
 
     # --- provenance ---
     used_fallback: bool
+    structured_method: str
     model_name: str
     prompt_name: str
     prompt_version: str

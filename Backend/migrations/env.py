@@ -31,6 +31,26 @@ config.set_main_option("sqlalchemy.url", get_settings().database_url)
 target_metadata = Base.metadata
 
 
+def render_item(type_, obj, autogen_context):
+    """Render custom column types as their underlying SQL types.
+
+    StrEnumType and UTCDateTime are TypeDecorators whose DDL is plain
+    VARCHAR/DATETIME. Alembic would otherwise emit `app.models.base.StrEnumType`
+    into the migration, which fails at import: migration files deliberately do
+    not import application models, because a migration is a frozen historical
+    record and the model it was generated from will keep changing.
+    """
+    if type_ == "type":
+        name = type(obj).__name__
+        if name == "StrEnumType":
+            autogen_context.imports.add("import sqlalchemy as sa")
+            return f"sa.String(length={obj.length})"
+        if name == "UTCDateTime":
+            autogen_context.imports.add("import sqlalchemy as sa")
+            return "sa.DateTime(timezone=True)"
+    return False
+
+
 def run_migrations_offline() -> None:
     """Emit SQL to stdout without connecting."""
     context.configure(
@@ -39,6 +59,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        render_item=render_item,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -49,6 +70,7 @@ def do_run_migrations(connection: Connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        render_item=render_item,
         # SQLite cannot ALTER most columns in place; batch mode rewrites the
         # table instead. Harmless on PostgreSQL.
         render_as_batch=connection.dialect.name == "sqlite",

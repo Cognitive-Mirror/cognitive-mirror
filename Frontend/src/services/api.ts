@@ -91,6 +91,69 @@ export type PendingEvidence = {
   requires_human_review: boolean;
   /** False when the review came from the deterministic fallback, not a model. */
   ai_generated: boolean;
+  /** Whether approved rubric text was in the reviewer's context. */
+  grounded: boolean;
+  /** Approved clause slugs the judgement rests on. Empty means ungrounded. */
+  rubric_citations: string[];
+};
+
+// --- Approved knowledge ----------------------------------------------------
+
+export type KnowledgeItem = {
+  slug: string;
+  kind: string;
+  title: string;
+  body: string;
+  level: string | null;
+  capability_id: string | null;
+  kpi_ref: string | null;
+  revision: number;
+  related: string[];
+};
+
+export type KnowledgeSummary = {
+  slug: string;
+  kind: string;
+  title: string;
+  level: string | null;
+  capability_id: string | null;
+  revision: number;
+};
+
+export type IndexStatus = {
+  available: boolean;
+  doc_count: number;
+  edge_count: number;
+  embedder: string;
+  reranker: string;
+  degraded: boolean;
+  /** Fusion weights fitted to this corpus, or inherited defaults. */
+  weights_calibrated: boolean;
+  notes: string[];
+};
+
+export type SearchHit = {
+  slug: string;
+  kind: string;
+  title: string;
+  level: string | null;
+  score: number;
+  via_graph: boolean;
+  excerpt: string;
+};
+
+export type EvidenceReviewResult = {
+  summary: string;
+  strength: string;
+  ai_confidence: number;
+  concerns: string[];
+  recommendation: string;
+  requires_human_review: boolean;
+  model_name: string;
+  prompt_version: string;
+  grounded: boolean;
+  rubric_citations: string[];
+  structured_method: string;
 };
 
 export class ApiError extends Error {
@@ -152,6 +215,27 @@ export function getPendingEvidence() {
   return request<PendingEvidence[]>("/evidence/pending");
 }
 
+export function getKnowledgeItem(slug: string) {
+  return request<KnowledgeItem>(`/knowledge/${encodeURIComponent(slug)}`);
+}
+
+export function listKnowledge(capabilityId?: string) {
+  const qs = capabilityId
+    ? `?capability_id=${encodeURIComponent(capabilityId)}`
+    : "";
+  return request<KnowledgeSummary[]>(`/knowledge${qs}`);
+}
+
+export function getIndexStatus() {
+  return request<IndexStatus>("/knowledge/status");
+}
+
+export function searchKnowledge(q: string, limit = 8) {
+  return request<SearchHit[]>(
+    `/knowledge/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+  );
+}
+
 export type EvidenceSubmission = {
   capability_id: string;
   evidence_type: string;
@@ -161,21 +245,18 @@ export type EvidenceSubmission = {
   context_ref: string;
 };
 
+export type EvidenceSubmitResult = {
+  evidence_id: string;
+  validation_status: string;
+  review: EvidenceReviewResult;
+  capability_state: CapabilityState;
+};
+
 export function submitEvidence(payload: EvidenceSubmission) {
-  return request<{
-    evidence_id: string;
-    validation_status: string;
-    review: {
-      summary: string;
-      strength: string;
-      ai_confidence: number;
-      concerns: string[];
-      recommendation: string;
-      requires_human_review: boolean;
-      model_name: string;
-    };
-    capability_state: CapabilityState;
-  }>("/evidence", { method: "POST", body: JSON.stringify(payload) });
+  return request<EvidenceSubmitResult>("/evidence", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function validateEvidence(

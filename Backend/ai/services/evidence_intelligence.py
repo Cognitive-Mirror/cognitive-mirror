@@ -16,6 +16,7 @@ AI never moves attained_level. Only a ManagerValidation can (Update Rule 1).
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -43,6 +44,7 @@ from app.schemas.evidence import EvidenceStrengthBand
 from app.schemas.review import ReviewDecision
 from app.scoring import constants as C
 from app.services.requirement_resolver import resolve_required_level
+from rag.retrieval import ground_evidence_review
 from app.scoring.engine import (
     ScoredEvidence,
     apply_step_limit,
@@ -61,11 +63,25 @@ async def run_ai_review(
     evidence: Evidence,
     capability: Capability,
 ) -> EvidenceReview:
-    """Run the evidence review graph and persist its structured output.
+    """Ground the review in approved rubric, run the graph, persist the output.
 
-    Advisory only. The stored row records which prompt version and model
-    produced it so the output can be audited later (thesis 22, 23).
+    Retrieval happens here rather than inside the graph because it is async and
+    needs the database session; the graph stays a pure synchronous state machine
+    over material already gathered, which keeps it replayable from its trace.
+
+    Advisory only. The row records the prompt version, the model, how structured
+    output was obtained, and every rubric clause cited, so the judgement can be
+    audited and re-derived later (thesis 22, 23).
     """
+    grounding = await ground_evidence_review(
+        session,
+        tenant_id=evidence.tenant_id,
+        capability_id=evidence.capability_id,
+        capability_name=capability.name,
+        evidence_title=evidence.title,
+        evidence_body=evidence.content,
+    )
+
     graph = get_evidence_review_graph()
     state = graph.invoke(
         {
@@ -78,11 +94,20 @@ async def run_ai_review(
             "title": evidence.title,
             "content": evidence.content,
             "context": evidence.context,
+            "rubric_text": grounding.as_prompt_section(),
+            "rubric_slugs": grounding.citation_slugs,
+            "grounded": grounding.available,
+            "grounding_reason": grounding.reason,
         }
     )
 
     output = state["review"]
     concerns = list(output.concerns) + list(state.get("guardrail_notes", []))
+
+    trace = dict(grounding.trace)
+    trace["grounding_available"] = grounding.available
+    trace["grounding_degraded"] = grounding.degraded
+    trace["passages_supplied"] = grounding.citation_slugs
 
     row = EvidenceReview(
         tenant_id=evidence.tenant_id,
@@ -96,8 +121,12 @@ async def run_ai_review(
         recommendation=output.recommendation,
         reasoning=output.reasoning,
         requires_human_review=output.requires_human_review,
+        grounded=bool(output.grounded),
+        rubric_citations=",".join(output.rubric_citations or []),
+        retrieval_trace=json.dumps(trace, default=str)[:12000],
         prompt_name=state.get("prompt_name", ""),
         prompt_version=state.get("prompt_version", ""),
+        structured_method=state.get("structured_method", ""),
         model_name=(
             "fallback:deterministic" if state.get("used_fallback")
             else state.get("model_name", "")

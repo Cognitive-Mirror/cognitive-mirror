@@ -168,3 +168,58 @@ NOT VERIFIED - the signed-in UI has never been seen with real data. There are no
         credentials in this environment, so only the unauthenticated path was checked in the
         browser. The seeded users also use placeholder Firebase uids and will not match a real
         sign-in yet.
+
+---------------------------------------------------------------------------------------------
+16-09-2026
+RAG - integrated the ARC hybrid-retrieval prototype per thesis section 27 Priority 3. Vendored
+        unmodified at Backend/hybrid_rag/ so the benchmark in Docs/Research/ stays valid; all
+        Impact-specific adaptation lives in Backend/rag/. Research docs copied to Docs/Research/.
+
+GROUNDING - evidence review no longer judges evidence from the model's own knowledge. It now
+        assesses against approved Capability Spine rubric clauses and cites them. That is the
+        difference between an opinion and an auditable assessment (thesis 2.9, 23).
+
+KNOWLEDGE - new knowledge_documents table, tenant-scoped with an is_approved gate: unapproved
+        text is invisible to AI by construction, not by convention. Seeded 27 authored clauses
+        across 3 capabilities (definitions, 12 behavioural indicators, 6 evidence rubrics,
+        3 validation guides, 3 KPI definitions). 87 explicit graph edges derived from real
+        Spine structure - no LLM graph build needed.
+
+DESIGN - grading criteria are fetched by key, not retrieved. Testing showed that with the
+        fallback embedder CAP-DS.RUBRIC.STRONG dropped out of the top 5, and the reviewer would
+        have graded the submission against the insufficient-evidence rubric plus an unrelated
+        capability. A capability rubric is enumerable; making it contingent on retrieval
+        quality was a category error. Anchors are now guaranteed present.
+
+NVIDIA - built the JSON-repair chain for structured output: native -> brace-matched JSON
+        extraction with Pydantic validation -> deterministic fallback. Brace matching rather
+        than regex, because capability_signals is nested and a greedy regex truncates it.
+        The path taken is persisted per review as structured_method.
+
+GUARDRAILS - fabricated citations are stripped and flagged; ungrounded reviews are capped at
+        0.3 confidence and forced to human review; a grounded review citing nothing is capped
+        at 0.4 and flagged.
+
+BUGFIX - Alembic autogenerate was emitting app.models.base.StrEnumType into migration files
+        without importing it, which would have broken any fresh deployment. Added a render_item
+        hook mapping the custom TypeDecorators to their underlying SQL types. The full chain
+        now builds from scratch and round-trips.
+
+API - added the knowledge router: GET /knowledge, /knowledge/status, /knowledge/search,
+        /knowledge/{slug}. 14 endpoints total.
+
+UI - learner evidence submission and manager validation are now live against the API.
+        Citations are clickable through to the approved clause in a modal. Grounding status is
+        a badge, so an ungrounded review is never styled like a grounded one. Retrieval health,
+        including the uncalibrated-weights caveat, is visible in the product rather than only
+        in a log. Manager strength is entered independently - the AI rating never pre-fills it.
+        Admin health page became a knowledge explorer using the same retrieval path.
+
+TESTS - 87 passing (was 67). New coverage: approval gate, tenant isolation of knowledge,
+        anchor guarantee, fabricated-citation stripping, ungrounded capping, JSON extraction
+        across fencing/prose/nesting/escaped quotes.
+
+NOT DONE - no key is configured yet, so no LLM call has run and the NVIDIA structured-output
+        path is untested against a real model. Fusion weights are inherited defaults, not
+        fitted to this corpus; calibration needs a labelled evaluation set that does not exist
+        yet. The signed-in UI is still unverified without Firebase credentials.

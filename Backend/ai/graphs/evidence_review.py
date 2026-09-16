@@ -122,20 +122,21 @@ def triage(state: EvidenceReviewState) -> EvidenceReviewState:
 
 
 def review(state: EvidenceReviewState) -> EvidenceReviewState:
-    """Run the registered evidence review prompt against the configured model."""
+    """Assess the submission against the supplied rubric clauses."""
     if state.get("review") is not None:
         return state  # triage already decided
 
     entry = get_prompt_registry().get("evidence_review")
+    rubric = state.get("rubric_text") or ""
 
     try:
         from ai.utils.llm_factory import create_llm
+        from ai.utils.structured import invoke_structured
 
         llm = create_llm()
-        structured = llm.with_structured_output(EvidenceReviewOutput)
-        chain = entry.template | structured
-        result: EvidenceReviewOutput = chain.invoke(
+        prompt_value = entry.template.invoke(
             {
+                "rubric": rubric,
                 "learner_id": state.get("learner_id", ""),
                 "capability_id": state.get("capability_id", ""),
                 "capability_name": state.get("capability_name", ""),
@@ -145,11 +146,17 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
                 "context": state.get("context", ""),
             }
         )
+        outcome = invoke_structured(llm, prompt_value, EvidenceReviewOutput)
+
+        if not outcome.ok:
+            raise RuntimeError(outcome.error or "structured output failed")
+
         model_name = getattr(llm, "model", "") or getattr(llm, "model_name", "")
         return {
             **state,
-            "review": result,
+            "review": outcome.value,
             "used_fallback": False,
+            "structured_method": outcome.method,
             "model_name": str(model_name),
             "prompt_name": entry.metadata.name,
             "prompt_version": entry.metadata.version,
@@ -162,6 +169,7 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
             **state,
             "review": _fallback_review(state, f"model unavailable ({type(exc).__name__})"),
             "used_fallback": True,
+            "structured_method": "fallback",
             "errors": errors,
             "prompt_name": entry.metadata.name,
             "prompt_version": entry.metadata.version,
@@ -198,17 +206,53 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
         )
         requires_human = True
 
-    # 2. Human review is the default; it may only be waived on a confident,
+    # 2. Grounding enforcement. A review that cites nothing is an ungrounded
+    #    opinion however fluent it reads, and thesis 23 requires that "did it use
+    #    only approved sources?" be answerable. Both directions are checked:
+    #    a missing citation and a fabricated one.
+    supplied = set(state.get("rubric_slugs") or [])
+    cited = [c for c in (result.rubric_citations or []) if c]
+
+    fabricated = [c for c in cited if supplied and c not in supplied]
+    if fabricated:
+        notes.append(
+            "Citations not present in the supplied rubric were removed: "
+            + ", ".join(sorted(fabricated))
+        )
+        concerns.append(
+            "The reviewer cited rubric clauses that were not supplied to it."
+        )
+        cited = [c for c in cited if c in supplied]
+        requires_human = True
+
+    if not state.get("grounded"):
+        reason = state.get("grounding_reason") or "no approved rubric was retrieved"
+        notes.append(f"Ungrounded review: {reason}")
+        concerns.append(
+            "No approved rubric was available, so this assessment is not anchored "
+            "to Impact's capability standard."
+        )
+        requires_human = True
+        confidence = min(confidence, 0.3)
+    elif not cited:
+        notes.append("Review cited no rubric clause despite one being supplied.")
+        concerns.append(
+            "The assessment does not identify which rubric clause it rests on."
+        )
+        requires_human = True
+        confidence = min(confidence, 0.4)
+
+    # 3. Human review is the default; it may only be waived on a confident,
     #    concern-free review (thesis 16.3, 24).
     if concerns or confidence < AUTO_REVIEW_WAIVER_CONFIDENCE:
         requires_human = True
 
-    # 3. Weak evidence never carries high confidence into the state model.
+    # 4. Weak evidence never carries high confidence into the state model.
     if result.strength is EvidenceStrength.WEAK and confidence > 0.5:
         notes.append("Confidence reduced: weak evidence cannot be high-confidence.")
         confidence = 0.5
 
-    # 4. Fallback output is capped and always human-reviewed.
+    # 5. Fallback output is capped and always human-reviewed.
     if state.get("used_fallback"):
         requires_human = True
         confidence = 0.0
@@ -222,6 +266,8 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
                 "concerns": concerns,
                 "confidence": confidence,
                 "requires_human_review": requires_human,
+                "rubric_citations": cited,
+                "grounded": bool(state.get("grounded")),
             }
         ),
         "guardrail_notes": notes,

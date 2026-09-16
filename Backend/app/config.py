@@ -51,6 +51,32 @@ class Settings(BaseSettings):
     # Priority 8 and Risk 6: AI cost must not scale faster than revenue).
     llm_model_name_fast: str = Field(default="meta/llama-3.1-8b-instruct")
 
+    # ─── Retrieval (ARC) ───
+    # Grounding the AI in approved Impact knowledge is thesis 27 Priority 3.
+    # See Docs/Decisions/ADR-002-retrieval.md for why each default is set here.
+    rag_enabled: bool = Field(
+        default=True,
+        description="Ground evidence review in retrieved Capability Spine rubrics.",
+    )
+
+    embedding_provider: str = Field(
+        default="openai",
+        description="openai | voyage | local. Local keeps evidence text in-house.",
+    )
+    embedding_model: str = Field(default="text-embedding-3-large")
+    openai_api_key: str = Field(default="", description="Embeddings only in this build.")
+    voyage_api_key: str = Field(default="")
+
+    rerank_model: str = Field(default="rerank-v3.5")
+    cohere_api_key: str = Field(
+        default="",
+        description="Cohere reranking. Falls back to a listwise LLM reranker.",
+    )
+
+    # How many rubric passages are packed into the evidence review prompt.
+    # rerank_keep in the ARC config is 8; the review needs fewer and tighter.
+    rag_rubric_passages: int = Field(default=7, ge=3, le=20)
+
     # ─── Firebase ───
     firebase_project_id: str = Field(default="cognitive-mirror-im")
     google_application_credentials: str = Field(

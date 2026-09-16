@@ -3,7 +3,7 @@
 > Master workflow document for the AI intelligence layer.
 > Every engineering task must reference this file.
 > **Product charter: Impact AI Thesis — Internal Build Version v1.2.**
-> Last updated: 2026-09-08 (second pass)
+> Last updated: 2026-09-16
 
 ---
 
@@ -18,7 +18,7 @@ Two earlier directions are **out of scope** and must not drive build decisions:
 |---|---|
 | `Impact - AI Thesis - Internal.docx` (v1.2) | ✅ **The charter.** All work traces to this. |
 | `The Cognitive Mirror.pdf` (B2C cognitive-modelling EdTech) | ⛔ Superseded. Name retained; product direction dropped. |
-| `Master Build Prompt — Query-Adaptive Evidence GraphRAG.md` | 🔵 Deferred. Possible future component for Phase 7 RAG — not a separate product. |
+| `Master Build Prompt — Query-Adaptive Evidence GraphRAG.md` | ✅ **Delivered.** Built as the ARC prototype, now vendored at `Backend/hybrid_rag/` and grounding evidence review. See ADR-002. |
 
 ---
 
@@ -29,14 +29,15 @@ Assessed 2026-09-08 against the actual contents of the repository.
 | Layer | Status | Detail |
 |-------|--------|--------|
 | Frontend UI | ✅ Functional | Next.js 16, role routing, dashboards, theming. Production build passes. |
-| Frontend data | 🟡 Partly live | The role workspace now reads `/capabilities/me` and `/capabilities/team` and renders real state. The evidence submission and manager validation screens are still hardcoded. |
+| Frontend data | ✅ Live | Role workspace, learner evidence submission, manager validation queue and the admin knowledge explorer all read the API. Citations are clickable through to the approved clause. |
 | Auth | ✅ Functional | Firebase Auth + Google sign-in; FastAPI verifies the ID token at `/auth/me`. |
-| Backend API | 🟡 Growing | 10 endpoints: auth, health, evidence (submit / pending / validate) and capabilities (spine / me / learner / team). No reporting or admin routers yet. |
+| Backend API | 🟡 Growing | 14 endpoints: auth, health, evidence, capabilities, and knowledge (list / status / search / clause). No reporting router yet. |
 | Messaging | ✅ Functional | Firestore person-to-person chat. **Not AI** — see §9. |
 | Database | ✅ Functional | SQLAlchemy async ORM, 8 tables, Alembic baseline migration (round-trip verified). SQLite in dev, PostgreSQL in prod. |
-| AI Layer | 🟡 Wired, unproven | Evidence review LangGraph, service and API are built and tested end-to-end. **Still never run against a live provider** — no API key, so it takes the deterministic fallback path. |
+| AI Layer | 🟡 Wired, unproven | Evidence review LangGraph grounded in retrieved Spine rubrics, with citation enforcement and a JSON-repair chain for NVIDIA. **Still never run against a live provider** — no API key yet, so it takes the deterministic fallback. |
 | Capability State Model | ✅ Implemented | All 6 open questions settled (CSM §9), including D6 three-layer requirement resolution. Scoring engine in `app/scoring/`, persisted and audited. Constants still uncalibrated. |
-| Evaluation | 🟡 Partial | 67 tests cover scoring, the evidence flow, D6 resolution and the capability API. **No LLM output quality harness yet** — that is Phase 6. |
+| Evaluation | 🟡 Partial | 87 tests cover scoring, the evidence flow, D6 resolution, the capability API and retrieval grounding. **No LLM output quality harness yet** — that is Phase 6. |
+| Knowledge / RAG | ✅ Functional | ARC vendored; 27 approved clauses, 87 explicit graph edges; grading anchors fetched by key so they never depend on retrieval quality. **Fusion weights uncalibrated** (ADR-002). |
 | DevOps | ❌ Missing | No Docker, no CI. |
 | Documentation | 🟡 Partial | This file + CSM spec + Wireframes. `AI_context.md`, `API_contract.md`, `System_architecture.md`, `Task.md`, `Project_memory.md` are still empty. |
 
@@ -410,7 +411,7 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 
 ### 11.1 Honest summary
 
-Against the Impact thesis, roughly **45%** is built.
+Against the Impact thesis, roughly **55%** is built.
 
 **Real and tested (44 passing tests):**
 - Capability State Model: all six open questions settled, implemented as a pure
@@ -428,28 +429,30 @@ Against the Impact thesis, roughly **45%** is built.
 - **Every scoring constant is a seeded placeholder.** The structure is
   defensible; the numbers are not yet earned. See CSM §11.
 - **The signed-in UI has never been seen with real data.** The role workspace calls the API and renders correctly when unauthenticated, but there are no Firebase credentials in this environment, so the populated view is unverified. Evidence submission and manager validation screens are still hardcoded.
-- No RAG, no evaluation harness for model output quality, no agents (see
+- **Retrieval weights are uncalibrated.** The ARC report's largest finding is
+  that inherited weights underperform fitted ones; calibration needs a labelled
+  eval set over real Impact content, which does not exist yet. The flag
+  `weights_calibrated: false` travels on every trace and shows in the admin UI.
+- No evaluation harness for model output quality, no agents (see
   `Docs/Decisions/ADR-001-agent-framework.md` for why that is deliberate).
 
 ### 11.2 The next slice
 
-1. **Get one real model call working.** Put a key in `Backend/.env` as
-   `LLM_API_KEY` and run the evidence review graph against the provider. Until
-   this happens the AI layer is unproven. Expect the structured-output binding
-   to need work.
+1. **Add the three keys to `Backend/.env`** (`LLM_API_KEY` for NVIDIA,
+   `OPENAI_API_KEY` for embeddings, `COHERE_API_KEY` for reranking) and run one
+   real review. Until this happens the AI layer is unproven and the NVIDIA
+   JSON-repair path is untested against an actual model.
 2. **Verify the signed-in UI.** Add Firebase credentials to
-   `Frontend/.env.local`, sign in as the seeded learner, and confirm the
-   capability rows render. The unauthenticated path is verified; the populated
-   one is not.
-3. **Wire the remaining screens.** `EvidenceWorkflows.tsx` still posts nowhere.
-   Connect the learner form to `POST /evidence` and the manager screen to
-   `GET /evidence/pending` + `POST /evidence/{id}/validate`.
-4. **Map seeded users to real Firebase uids.** `scripts/seed_demo.py` uses
-   placeholder uids, so a real sign-in will not match a seeded learner yet.
-5. **Phase 6 evaluation harness** for model output: hallucination,
-   weak-evidence over-rating, ROI overclaiming.
-6. **Start logging manager override rate on day one of real use.** It is the
-   primary calibration signal for every seeded constant.
+   `Frontend/.env.local` and map the seeded users to real Firebase uids in
+   `scripts/seed_demo.py` — they currently use placeholders and will not match
+   a real sign-in.
+3. **Author a real Capability Spine with a client.** The 27 seeded clauses are a
+   credible stand-in, not a product. Rubric quality now bounds review quality.
+4. **Build the labelled evaluation set** — 30–50 queries per class over that
+   Spine. Everything in ADR-002 (what is not calibrated) depends on it.
+5. **Phase 6 evaluation harness** for model output: hallucination, weak-evidence
+   over-rating, ROI overclaiming, and citation fidelity.
+6. **Start logging manager override rate on day one of real use.**
 
 ## 12. Future Improvements
 

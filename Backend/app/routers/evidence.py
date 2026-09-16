@@ -78,6 +78,11 @@ class EvidenceReviewResponse(BaseModel):
     requires_human_review: bool
     model_name: str
     prompt_version: str
+    # Grounding. A review with grounded=False or no citations is an ungrounded
+    # opinion and the UI must present it as one (thesis 23).
+    grounded: bool = False
+    rubric_citations: list[str] = []
+    structured_method: str = ""
 
 
 class EvidenceSubmitResponse(BaseModel):
@@ -89,6 +94,7 @@ class EvidenceSubmitResponse(BaseModel):
 
 class CapabilityStateResponse(BaseModel):
     capability_id: str
+    capability_name: str = ""
     attained_level: str
     current_support_level: str
     required_level: str
@@ -112,9 +118,10 @@ class ValidationRequest(BaseModel):
     feedback: str = ""
 
 
-def _state_response(record) -> CapabilityStateResponse:
+def _state_response(record, capability_name: str = "") -> CapabilityStateResponse:
     return CapabilityStateResponse(
         capability_id=record.capability_id,
+        capability_name=capability_name,
         attained_level=str(record.attained_level),
         current_support_level=str(record.current_support_level),
         required_level=str(record.required_level),
@@ -198,8 +205,13 @@ async def submit_evidence(
             requires_human_review=review_row.requires_human_review,
             model_name=review_row.model_name,
             prompt_version=review_row.prompt_version,
+            grounded=review_row.grounded,
+            rubric_citations=[
+                c for c in review_row.rubric_citations.split(",") if c
+            ],
+            structured_method=review_row.structured_method,
         ),
-        capability_state=_state_response(record),
+        capability_state=_state_response(record, capability.name),
     )
 
 
@@ -237,6 +249,10 @@ async def list_pending_validation(
             "concerns": [c for c in (rv.concerns.split("\n") if rv else []) if c],
             "requires_human_review": rv.requires_human_review if rv else True,
             "ai_generated": bool(rv and not rv.model_name.startswith("fallback")),
+            "grounded": bool(rv and rv.grounded),
+            "rubric_citations": [
+                c for c in (rv.rubric_citations.split(",") if rv else []) if c
+            ],
         }
         for ev, rv in rows
     ]
@@ -280,4 +296,11 @@ async def validate_evidence(
         applied_independently=payload.applied_independently,
         feedback=payload.feedback,
     )
-    return _state_response(record)
+
+    capability = (
+        await session.execute(
+            select(Capability).where(Capability.id == record.capability_id)
+        )
+    ).scalar_one_or_none()
+
+    return _state_response(record, capability.name if capability else "")

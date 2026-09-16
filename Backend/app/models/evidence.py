@@ -105,10 +105,36 @@ class EvidenceReview(Base, TenantScoped, Timestamped):
         doc="Defaults true. AI never clears its own review requirement.",
     )
 
+    # --- Grounding (thesis 27 Priority 3, evaluation question in thesis 23) ---
+    grounded: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        doc="Whether approved rubric text was in the reviewer's context.",
+    )
+    rubric_citations: Mapped[str] = mapped_column(
+        Text, default="",
+        doc=(
+            "Comma-separated slugs of the approved clauses this judgement rests "
+            "on. Fabricated citations are stripped by the guardrail before this "
+            "is written, so everything here was genuinely supplied to the model."
+        ),
+    )
+    retrieval_trace: Mapped[str] = mapped_column(
+        Text, default="",
+        doc="JSON retrieval trace: query class, stages, embedder, reranker.",
+    )
+
     # Auditability (thesis 22, 23).
     prompt_name: Mapped[str] = mapped_column(String(64), default="")
     prompt_version: Mapped[str] = mapped_column(String(16), default="")
     model_name: Mapped[str] = mapped_column(String(120), default="")
+    structured_method: Mapped[str] = mapped_column(
+        String(32), default="",
+        doc=(
+            "How structured output was obtained: native | json_extracted | "
+            "fallback. A review needing JSON repair had no format guarantee, and "
+            "evaluation should be able to segment quality by this."
+        ),
+    )
 
 
 class ManagerValidation(Base, TenantScoped, Timestamped):

@@ -118,10 +118,10 @@ def _register_default_prompts(registry: PromptRegistry) -> None:
     registry.register(
         metadata=PromptMetadata(
             name="evidence_review",
-            version="1.0.0",
-            purpose="Analyze learner-submitted evidence for capability signals",
+            version="2.0.0",
+            purpose="Assess evidence against approved Capability Spine rubric clauses",
             input_variables=[
-                "learner_id", "capability_id", "capability_name",
+                "rubric", "learner_id", "capability_id", "capability_name",
                 "evidence_type", "title", "content", "context",
             ],
             output_schema="EvidenceReviewOutput",
