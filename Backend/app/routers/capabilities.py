@@ -1,11 +1,9 @@
-"""Capability state endpoints.
+"""Capability state read endpoints.
 
-Read paths for the learner and manager workspaces. Every response keeps the D1
-split visible: `attained_level` and `current_support_level` are returned as
-separate fields with a confidence band, never collapsed into one score. A UI
-that merges them loses the entire argument for the model.
-
-Aggregates follow D2: coverage and distribution, never an average level.
+The D1 split stays visible in every payload: `attained_level` and
+`current_support_level` are separate fields with a confidence band, never one
+score. Aggregates follow D2: coverage and distribution, never an average level.
+The knowledge dimension (ADR-003) is reported beside the level, never in it.
 """
 
 from __future__ import annotations
@@ -15,12 +13,11 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_token
+from app.auth import current_user, require_supervisor
 from app.database import get_db
 from app.models import Capability, CapabilityStateRecord, User
-from app.routers.evidence import subject_of, tenant_of
 from app.schemas.capability import CapabilityLevel, SubjectType
-from app.scoring.engine import LEVEL_ORDER, SubjectState, aggregate, level_index
+from app.scoring.engine import SubjectState, aggregate, level_index
 from app.services.requirement_resolver import resolve_required_level
 
 router = APIRouter(prefix="/capabilities", tags=["capabilities"])
@@ -48,8 +45,8 @@ class CapabilityStateItem(BaseModel):
 
     attained_level: str
     current_support_level: str
-    # True when decayed evidence supports less than what was validated. This is
-    # a prompt to revalidate, never a statement that the person declined (D1).
+    # Decayed evidence supports less than what was validated: a prompt to
+    # revalidate, never a statement that the person declined (D1).
     needs_revalidation: bool
 
     status: str
@@ -62,6 +59,13 @@ class CapabilityStateItem(BaseModel):
     half_life_days: float
     recommended_next_action: str
     scoring_model_version: str
+
+    knowledge_mastery: float | None
+    knowledge_source: str
+    knowledge_pre: float | None
+    knowledge_post: float | None
+    knowledge_gain: float | None
+    knowing_doing: str
 
 
 class TeamAggregate(BaseModel):
@@ -78,73 +82,48 @@ class TeamAggregate(BaseModel):
     revalidation_due_count: int
 
 
-@router.get("", response_model=list[CapabilityItem])
-async def list_capabilities(
-    token: dict = Depends(verify_token),
-    session: AsyncSession = Depends(get_db),
-) -> list[CapabilityItem]:
-    """The Capability Spine for this tenant."""
-    rows = (
-        await session.execute(
-            select(Capability)
-            .where(Capability.tenant_id == tenant_of(token))
-            .order_by(Capability.name)
-        )
-    ).scalars().all()
-
-    return [
-        CapabilityItem(
-            id=row.id,
-            slug=row.slug,
-            name=row.name,
-            description=row.description,
-            capability_class=str(row.capability_class),
-            linked_kpi_ids=[k for k in row.linked_kpi_ids.split(",") if k],
-        )
-        for row in rows
-    ]
+async def _tenant_capabilities(session: AsyncSession, tenant_id: str) -> list[Capability]:
+    return list(
+        (
+            await session.execute(
+                select(Capability)
+                .where(Capability.tenant_id == tenant_id)
+                .order_by(Capability.name)
+            )
+        ).scalars()
+    )
 
 
-async def _states_for_subject(
-    session: AsyncSession, *, tenant_id: str, subject_id: str
-) -> list[CapabilityStateItem]:
-    """Every capability in the Spine, with this subject's state against it.
+async def _states_for(session: AsyncSession, subject: User) -> list[CapabilityStateItem]:
+    """Every capability in the Spine with this person's state against it.
 
-    Capabilities with no evidence yet are still returned, at novice with zero
-    confidence. Omitting them would hide exactly the gaps the product exists
-    to surface.
+    Capabilities with no activity yet are returned at novice with zero
+    confidence. Omitting them would hide exactly the gaps the product surfaces.
     """
-    capabilities = (
-        await session.execute(
-            select(Capability)
-            .where(Capability.tenant_id == tenant_id)
-            .order_by(Capability.name)
-        )
-    ).scalars().all()
-
     records = {
         row.capability_id: row
         for row in (
             await session.execute(
                 select(CapabilityStateRecord).where(
-                    CapabilityStateRecord.tenant_id == tenant_id,
-                    CapabilityStateRecord.subject_id == subject_id,
+                    CapabilityStateRecord.tenant_id == subject.tenant_id,
+                    CapabilityStateRecord.subject_id == subject.id,
                     CapabilityStateRecord.subject_type == SubjectType.LEARNER,
                 )
             )
-        ).scalars().all()
+        ).scalars()
     }
 
     items: list[CapabilityStateItem] = []
-    for capability in capabilities:
+    for capability in await _tenant_capabilities(session, subject.tenant_id):
         record = records.get(capability.id)
         requirement = await resolve_required_level(
             session,
-            tenant_id=tenant_id,
+            tenant_id=subject.tenant_id,
             capability_id=capability.id,
-            subject_id=subject_id,
+            subject_id=subject.id,
+            role_ref=subject.role_ref,
+            program_ref=subject.program_ref,
         )
-
         attained = record.attained_level if record else CapabilityLevel.NOVICE
         support = record.current_support_level if record else CapabilityLevel.NOVICE
 
@@ -162,9 +141,7 @@ async def _states_for_subject(
                 status=str(record.status) if record else "not_started",
                 gap=level_index(requirement.level) - level_index(attained),
                 state_confidence=record.state_confidence if record else 0.0,
-                confidence_band=(
-                    str(record.confidence_band) if record else "revalidation_due"
-                ),
+                confidence_band=str(record.confidence_band) if record else "revalidation_due",
                 validated_points=record.validated_points if record else 0.0,
                 provisional_points=record.provisional_points if record else 0.0,
                 independent_contexts=record.independent_contexts if record else 0,
@@ -172,122 +149,90 @@ async def _states_for_subject(
                 recommended_next_action=(
                     record.recommended_next_action
                     if record and record.recommended_next_action
-                    else "Submit workplace evidence to begin."
+                    else "Start the learning journey, then apply it at work."
                 ),
-                scoring_model_version=(
-                    record.scoring_model_version if record else ""
-                ),
+                scoring_model_version=record.scoring_model_version if record else "",
+                knowledge_mastery=record.knowledge_mastery if record else None,
+                knowledge_source=record.knowledge_source if record else "none",
+                knowledge_pre=record.knowledge_pre if record else None,
+                knowledge_post=record.knowledge_post if record else None,
+                knowledge_gain=record.knowledge_gain if record else None,
+                knowing_doing=str(record.knowing_doing) if record else "insufficient_data",
             )
         )
     return items
 
 
+@router.get("", response_model=list[CapabilityItem])
+async def list_capabilities(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[CapabilityItem]:
+    """The Capability Spine for this tenant."""
+    return [
+        CapabilityItem(
+            id=c.id,
+            slug=c.slug,
+            name=c.name,
+            description=c.description,
+            capability_class=str(c.capability_class),
+            linked_kpi_ids=[k for k in c.linked_kpi_ids.split(",") if k],
+        )
+        for c in await _tenant_capabilities(session, user.tenant_id)
+    ]
+
+
 @router.get("/me", response_model=list[CapabilityStateItem])
 async def my_capability_states(
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[CapabilityStateItem]:
-    """The signed-in learner's capability state across the Spine."""
-    return await _states_for_subject(
-        session, tenant_id=tenant_of(token), subject_id=subject_of(token)
-    )
+    return await _states_for(session, user)
 
 
 @router.get("/learner/{learner_id}", response_model=list[CapabilityStateItem])
 async def learner_capability_states(
     learner_id: str,
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[CapabilityStateItem]:
-    """One report's state. Restricted to that person's own manager."""
-    tenant_id = tenant_of(token)
-    viewer_id = subject_of(token)
-
-    learner = (
-        await session.execute(
-            select(User).where(User.id == learner_id, User.tenant_id == tenant_id)
-        )
-    ).scalar_one_or_none()
-    if learner is None:
+    """One person's state: visible to them, their manager, and admins."""
+    learner = await session.get(User, learner_id)
+    if learner is None or learner.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Learner not found.")
-
-    if learner.manager_id != viewer_id and learner_id != viewer_id:
-        # Capability state is developmental data. Anyone may not browse it.
+    if learner.id != user.id and not user.can_supervise(learner):
+        # Capability state is developmental data, not a directory.
         raise HTTPException(
             status_code=403,
-            detail="Only this learner or their manager may view this state.",
+            detail="Only this learner, their manager or an admin may view this state.",
         )
-
-    return await _states_for_subject(
-        session, tenant_id=tenant_id, subject_id=learner_id
-    )
+    return await _states_for(session, learner)
 
 
 @router.get("/team", response_model=list[TeamAggregate])
 async def team_aggregate(
-    token: dict = Depends(verify_token),
+    user: User = Depends(require_supervisor),
     session: AsyncSession = Depends(get_db),
 ) -> list[TeamAggregate]:
-    """Aggregate state across the signed-in manager's direct reports (D2).
+    """Coverage and distribution across this manager's direct reports (D2).
 
-    Returns coverage and the full distribution. There is deliberately no team
-    average: levels are ordinal, so a mean is undefined, and it would hide the
-    distribution that decides what intervention is needed.
+    No team average: levels are ordinal, so a mean is undefined, and it would
+    hide the distribution that decides what intervention is needed.
     """
-    tenant_id = tenant_of(token)
-    manager_id = subject_of(token)
-
     reports = (
         await session.execute(
             select(User).where(
-                User.tenant_id == tenant_id,
-                User.manager_id == manager_id,
+                User.tenant_id == user.tenant_id,
+                User.manager_id == user.id,
                 User.is_active.is_(True),
             )
         )
     ).scalars().all()
 
-    capabilities = (
-        await session.execute(
-            select(Capability)
-            .where(Capability.tenant_id == tenant_id)
-            .order_by(Capability.name)
-        )
-    ).scalars().all()
-
-    if not reports:
-        return [
-            TeamAggregate(
-                capability_id=c.id,
-                capability_name=c.name,
-                subject_count=0,
-                validated_coverage=0.0,
-                nominal_coverage=0.0,
-                median_level=None,
-                distribution={level.value: 0 for level in LEVEL_ORDER},
-                critical_gap_count=0,
-                revalidation_due_count=0,
-            )
-            for c in capabilities
-        ]
-
-    per_learner = {
-        report.id: await _states_for_subject(
-            session, tenant_id=tenant_id, subject_id=report.id
-        )
-        for report in reports
-    }
-
-    results: list[TeamAggregate] = []
-    for capability in capabilities:
-        states: list[SubjectState] = []
-        for items in per_learner.values():
-            item = next(
-                (i for i in items if i.capability_id == capability.id), None
-            )
-            if item is None:
-                continue
-            states.append(
+    states_by_capability: dict[str, list[SubjectState]] = {}
+    for report in reports:
+        for item in await _states_for(session, report):
+            states_by_capability.setdefault(item.capability_id, []).append(
                 SubjectState(
                     attained_level=CapabilityLevel(item.attained_level),
                     required_level=CapabilityLevel(item.required_level),
@@ -297,7 +242,9 @@ async def team_aggregate(
                 )
             )
 
-        summary = aggregate(states)
+    results: list[TeamAggregate] = []
+    for capability in await _tenant_capabilities(session, user.tenant_id):
+        summary = aggregate(states_by_capability.get(capability.id, []))
         results.append(
             TeamAggregate(
                 capability_id=capability.id,
@@ -305,9 +252,7 @@ async def team_aggregate(
                 subject_count=summary.subject_count,
                 validated_coverage=summary.validated_coverage,
                 nominal_coverage=summary.nominal_coverage,
-                median_level=(
-                    summary.median_level.value if summary.median_level else None
-                ),
+                median_level=summary.median_level.value if summary.median_level else None,
                 distribution=summary.distribution,
                 critical_gap_count=summary.critical_gap_count,
                 revalidation_due_count=summary.revalidation_due_count,

@@ -1,8 +1,7 @@
 """Cognitive Mirror API entry point.
 
-Authentication is handled by Firebase on the client; this service verifies the
-resulting ID token (see app/auth.py). There is deliberately no password
-endpoint here — credentials never reach this service.
+Sign-in happens in Firebase on the client. This service verifies the resulting
+ID token and maps it to a `users` row (app/auth.py); it never sees a password.
 """
 
 import logging
@@ -11,16 +10,17 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from app.auth import verify_token
+from app.auth import current_user
 from app.config import get_settings
 from app.database import dispose_engine
-from app.routers import capabilities as capabilities_router
-from app.routers import evidence as evidence_router
-from app.routers import knowledge as knowledge_router
+from app.models import User
+from app.routers import capabilities, evidence, knowledge, learning
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -30,14 +30,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title="Cognitive Mirror",
-    description="AI-powered Capability Intelligence Platform",
+    description="Capability intelligence platform",
     version="0.1.0",
     lifespan=lifespan,
 )
 
-app.include_router(evidence_router.router)
-app.include_router(capabilities_router.router)
-app.include_router(knowledge_router.router)
+for module in (evidence, capabilities, knowledge, learning):
+    app.include_router(module.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,9 +47,12 @@ app.add_middleware(
 )
 
 
-@app.get("/")
-def home() -> dict:
-    return {"message": "Hello Cognitive Mirror"}
+class Me(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    role: str
+    tenant_id: str
 
 
 @app.get("/health")
@@ -58,18 +60,19 @@ def health() -> dict:
     """Liveness probe. Reports configuration state without leaking secrets."""
     return {
         "status": "ok",
+        "service": "cognitive-mirror",
         "environment": settings.environment,
-        "llm_provider": settings.llm_provider,
         "llm_configured": bool(settings.llm_api_key),
     }
 
 
-@app.get("/auth/me")
-def get_me(decoded_token: dict = Depends(verify_token)) -> dict:
-    """Return the authenticated user's identity from their verified ID token."""
-    return {
-        "uid": decoded_token.get("uid") or decoded_token.get("sub"),
-        "email": decoded_token.get("email"),
-        "name": decoded_token.get("name"),
-        "picture": decoded_token.get("picture"),
-    }
+@app.get("/auth/me", response_model=Me)
+async def get_me(user: User = Depends(current_user)) -> Me:
+    """The signed-in user. The frontend routes by `role` from here."""
+    return Me(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=str(user.role),
+        tenant_id=user.tenant_id,
+    )

@@ -2,7 +2,8 @@
 
 > Master workflow document for the AI intelligence layer.
 > Every engineering task must reference this file.
-> **Product charter: Impact AI Thesis — Internal Build Version v1.2.**
+> **Reference: Impact AI Thesis — Internal Build Version v1.2.** The client treats it as a
+> reference, not a specification; client direction wins and is recorded in `Docs/Decisions/`.
 > Last updated: 2026-09-16
 
 ---
@@ -24,22 +25,25 @@ Two earlier directions are **out of scope** and must not drive build decisions:
 
 ## 1. Current Status
 
-Assessed 2026-09-08 against the actual contents of the repository.
+Assessed 2026-10-07 against the actual contents of the repository.
 
 | Layer | Status | Detail |
 |-------|--------|--------|
-| Frontend UI | ✅ Functional | Next.js 16, role routing, dashboards, theming. Production build passes. |
-| Frontend data | ✅ Live | Role workspace, learner evidence submission, manager validation queue and the admin knowledge explorer all read the API. Citations are clickable through to the approved clause. |
-| Auth | ✅ Functional | Firebase Auth + Google sign-in; FastAPI verifies the ID token at `/auth/me`. |
-| Backend API | 🟡 Growing | 14 endpoints: auth, health, evidence, capabilities, and knowledge (list / status / search / clause). No reporting router yet. |
-| Messaging | ✅ Functional | Firestore person-to-person chat. **Not AI** — see §9. |
-| Database | ✅ Functional | SQLAlchemy async ORM, 8 tables, Alembic baseline migration (round-trip verified). SQLite in dev, PostgreSQL in prod. |
-| AI Layer | 🟡 Wired, unproven | Evidence review LangGraph grounded in retrieved Spine rubrics, with citation enforcement and a JSON-repair chain for NVIDIA. **Still never run against a live provider** — no API key yet, so it takes the deterministic fallback. |
-| Capability State Model | ✅ Implemented | All 6 open questions settled (CSM §9), including D6 three-layer requirement resolution. Scoring engine in `app/scoring/`, persisted and audited. Constants still uncalibrated. |
-| Evaluation | 🟡 Partial | 87 tests cover scoring, the evidence flow, D6 resolution, the capability API and retrieval grounding. **No LLM output quality harness yet** — that is Phase 6. |
-| Knowledge / RAG | ✅ Functional | ARC vendored; 27 approved clauses, 87 explicit graph edges; grading anchors fetched by key so they never depend on retrieval quality. **Fusion weights uncalibrated** (ADR-002). |
+| Frontend | ✅ Live | Next.js 16. Every screen reads the API; there are no mock pages. One `AppShell` holds navigation for all roles. |
+| Auth & identity | ✅ Functional | Firebase sign-in. The backend verifies the ID token and maps it to a `users` row (`app/auth.py: current_user`); role comes from that row, never from the client. Manager-only routes check that the caller supervises the learner. |
+| Backend API | ✅ Functional | 19 routes: auth, health, evidence, capabilities, knowledge, learning. |
+| Database | ✅ Functional | SQLAlchemy async ORM, Alembic migrations, SQLite in dev, PostgreSQL in prod. |
+| AI layer | 🟡 Wired | Grounded evidence review (LangGraph) and quote-verified open-answer marking. GLM-5.3 via NVIDIA's OpenAI-compatible endpoint; falls back to deterministic output when no model answers. |
+| Capability State Model | ✅ Implemented | D1–D6 plus the knowledge dimension (ADR-003). Constants seeded, not calibrated. |
+| Learning journey | ✅ Functional | Pre/post assessments, interactive e-learns (7 exercise types), facilitator queue for open answers. Peer and AI practice are shown as locked stages. |
+| Knowledge / RAG | ✅ Functional | ARC vendored; Jina embeddings and reranking, Cohere fallback. Fusion weights uncalibrated (ADR-002). |
+| Evaluation | 🟡 Partial | Backend test suite covers scoring, evidence flow, roles, D6, grounding and learning. No LLM output-quality harness yet. |
 | DevOps | ❌ Missing | No Docker, no CI. |
-| Documentation | 🟡 Partial | This file + CSM spec + Wireframes. `AI_context.md`, `API_contract.md`, `System_architecture.md`, `Task.md`, `Project_memory.md` are still empty. |
+
+**Removed 2026-10-07:** the Firestore chat panel (it was person-to-person messaging,
+not part of the capability workflow) and the mock-data pages (capability map,
+impact signals, practice, user management, insight manager), which displayed
+invented learners and numbers.
 
 ### 1.1 Incident: Phase 1 was deleted and recovered
 
@@ -241,8 +245,7 @@ Backend/
 | Prompt registry + metadata | `Backend/ai/prompt_registry/registry.py` | ✅ |
 | Model-agnostic LLM factory | `Backend/ai/utils/llm_factory.py` | ✅ untested against a live provider |
 | Frontend login UI | `Frontend/src/components/LoginExperience.tsx` | ✅ |
-| Role-based routing | `Frontend/src/app/[role]/page.tsx` | ✅ |
-| Workspace messaging | `Frontend/src/services/chatService.ts` | ✅ |
+| Role-based navigation | `Frontend/src/components/AppShell.tsx` | ✅ |
 
 **Removed 2026-09-06:** the `/login` endpoint and `mockAuthenticate` helper.
 They compared plaintext passwords server-side and were unreachable once Firebase
@@ -374,8 +377,8 @@ pyproject.toml ──→ .env + config ──→ app/ package structure
 - Human-in-the-loop is **mandatory** for state changes
 - **No feature may be labelled "AI" in the UI unless a model actually runs.**
   Thesis Risk 1 is "it becomes a chatbot"; overclaiming in the interface is the
-  first step toward that. The Firestore chat panel is *workspace messaging*, not
-  an assistant. Mock screens must carry a "Sample data" marker.
+  first step toward that. Screens show only what the backend computes; there
+  are no mock screens.
 - **API keys are server-side only.** No LLM key may appear anywhere under
   `Frontend/`. `NEXT_PUBLIC_*` values ship to the browser and are public.
 

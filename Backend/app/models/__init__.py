@@ -14,6 +14,10 @@ Model map:
   CapabilityStateRecord   current scored state per (subject, capability)
   CapabilityStateEvent    append-only audit log (Update Rule 6)
   KnowledgeDocument       approved Spine knowledge the AI may retrieve
+  LearningActivity        an e-learn or assessment for one capability
+  AssessmentItem          one interactive exercise; holds the answer key
+  ActivityAttempt         a learner attempt; retakes are new rows
+  ItemResponse            one answer, its credit, and who scored it
 """
 
 from app.models.audit import CapabilityStateEvent
@@ -24,10 +28,17 @@ from app.models.capability import (
 )
 from app.models.evidence import Evidence, EvidenceReview, ManagerValidation
 from app.models.knowledge import KnowledgeDocument, KnowledgeKind
-from app.models.user import User
+from app.models.learning import (
+    ActivityAttempt,
+    AssessmentItem,
+    ItemResponse,
+    LearningActivity,
+)
+from app.models.user import Role, User
 
 __all__ = [
     "User",
+    "Role",
     "Capability",
     "CapabilityRequirement",
     "CapabilityStateRecord",
@@ -37,4 +48,8 @@ __all__ = [
     "CapabilityStateEvent",
     "KnowledgeDocument",
     "KnowledgeKind",
+    "LearningActivity",
+    "AssessmentItem",
+    "ActivityAttempt",
+    "ItemResponse",
 ]

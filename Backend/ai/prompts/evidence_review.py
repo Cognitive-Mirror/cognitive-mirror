@@ -46,18 +46,15 @@ it does not cause its movement. Describe association, with uncertainty stated.
 JSON schema:
 {{
   "summary": "What the evidence shows, in the rubric's terms",
-  "evidence_type_detected": "workplace_application | scenario_practice | reflection | peer_feedback | manager_observation | document | other",
-  "capability_signals": [
-    {{"capability_id": "id", "signal": "what was observed", "strength": "weak|moderate|strong|exceptional"}}
-  ],
+  "evidence_type_detected": "workplace_application | scenario_practice | reflection | \
+peer_feedback | manager_observation | document | other",
   "strength": "weak | moderate | strong | exceptional",
   "confidence": 0.0,
   "concerns": ["gaps, ambiguities, or rubric questions left unsettled"],
   "recommendation": "The next action for the manager or learner",
   "requires_human_review": true,
   "reasoning": "Which clause led to which conclusion",
-  "rubric_citations": ["slugs of clauses actually used"],
-  "grounded": true
+  "rubric_citations": ["slugs of clauses actually used"]
 }}"""
 
 EVIDENCE_REVIEW_HUMAN = """\
@@ -69,7 +66,6 @@ APPROVED RUBRIC CLAUSES (the only standard you may apply):
 
 EVIDENCE SUBMISSION
 
-Learner: {learner_id}
 Capability under review: {capability_id} - {capability_name}
 Declared evidence type: {evidence_type}
 Title: {title}

@@ -16,10 +16,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import verify_token
+from app.auth import current_user
 from app.database import get_db
-from app.models import KnowledgeDocument
-from app.routers.evidence import tenant_of
+from app.models import KnowledgeDocument, User
 from rag.knowledge_index import get_index
 from rag.retrieval import search_knowledge
 
@@ -77,12 +76,12 @@ class SearchHit(BaseModel):
 @router.get("", response_model=list[KnowledgeSummary])
 async def list_knowledge(
     capability_id: str | None = Query(default=None),
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[KnowledgeSummary]:
     """Approved knowledge for this tenant, optionally scoped to a capability."""
     stmt = select(KnowledgeDocument).where(
-        KnowledgeDocument.tenant_id == tenant_of(token),
+        KnowledgeDocument.tenant_id == user.tenant_id,
         KnowledgeDocument.is_approved.is_(True),
     )
     if capability_id:
@@ -100,10 +99,10 @@ async def list_knowledge(
 
 @router.get("/status", response_model=IndexStatus)
 async def index_status(
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> IndexStatus:
-    index = await get_index(session, tenant_of(token))
+    index = await get_index(session, user.tenant_id)
 
     if index is None:
         return IndexStatus(
@@ -142,12 +141,12 @@ async def index_status(
 async def search(
     q: str = Query(min_length=2),
     limit: int = Query(default=8, ge=1, le=25),
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[SearchHit]:
     """Free-text search over approved knowledge."""
     grounding = await search_knowledge(
-        session, tenant_id=tenant_of(token), query=q, limit=limit
+        session, tenant_id=user.tenant_id, query=q, limit=limit
     )
     return [
         SearchHit(
@@ -162,14 +161,14 @@ async def search(
 @router.get("/{slug}", response_model=KnowledgeItem)
 async def get_knowledge(
     slug: str,
-    token: dict = Depends(verify_token),
+    user: User = Depends(current_user),
     session: AsyncSession = Depends(get_db),
 ) -> KnowledgeItem:
     """One approved clause. This is what a citation resolves to."""
     row = (
         await session.execute(
             select(KnowledgeDocument).where(
-                KnowledgeDocument.tenant_id == tenant_of(token),
+                KnowledgeDocument.tenant_id == user.tenant_id,
                 KnowledgeDocument.slug == slug,
                 KnowledgeDocument.is_approved.is_(True),
             )

@@ -1,10 +1,10 @@
-# Capability State Model (CSM) — v0.2 (Draft)
+# Capability State Model (CSM) — v0.3 (Draft)
 
 > **Status:** Draft for team review. Six open questions settled in §9; implemented in `Backend/app/scoring/` and persisted via `Backend/app/models/`.
 > **Owner:** AI team · **Reviewers needed:** Yoganarayanan (research), Shashank, Allan
-> **Source of truth:** Impact AI Thesis — Internal Build Version v1.2
+> **Reference:** Impact AI Thesis — Internal Build Version v1.2 (the client treats it as a reference, not a specification; client direction wins where they differ)
 > **Code counterpart:** [`Backend/app/schemas/capability.py`](../../Backend/app/schemas/capability.py)
-> **Last updated:** 2026-09-06
+> **Last updated:** 2026-10-07 — knowledge dimension added ([ADR-003](../Decisions/ADR-003-learning-signals.md))
 
 ---
 
@@ -102,6 +102,13 @@ never treat them as if they were.
 | `evidence.application_frequency` | `EvidenceSignals` | Repeated application, not a single instance |
 
 ### Tier 2 — Supporting (inform confidence, cannot alone raise level)
+
+**Implemented as the knowledge dimension (v0.3, [ADR-003](../Decisions/ADR-003-learning-signals.md)).**
+E-learn checks and pre/post assessments produce `knowledge_mastery`,
+`knowledge_gain` and the `knowing_doing` diagnostic, reported beside the level.
+Knowledge is asymmetric: it can lower confidence when it contradicts validated
+work (`PENALTY_KNOWLEDGE_CONTRADICTION`), and it can never raise level or
+confidence.
 
 | Signal | Group | Notes |
 |---|---|---|
@@ -397,7 +404,8 @@ validation_freshness = weight(days_since_last_validation)
 diversity            = min(1, independent_contexts / required_contexts(attained_level))
 
 raw        = 0.40*sufficiency + 0.40*validation_freshness + 0.20*diversity   [seeded]
-penalty    = min(0.40, 0.15*authenticity_concerns + 0.10*calibration_mismatch)
+penalty    = min(0.40, 0.15*authenticity_concerns + 0.10*calibration_mismatch
+                     + 0.10*knowledge_contradiction)                       # v0.3
 confidence = raw * (1 - penalty)
 
 if not manager_validated:

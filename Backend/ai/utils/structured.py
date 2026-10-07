@@ -49,7 +49,7 @@ def _extract_json_object(text: str) -> str | None:
 
     Models that cannot emit strict JSON usually emit good JSON wrapped in
     apology or fencing. Brace matching is used rather than a greedy regex
-    because nested objects defeat the regex and `capability_signals` is nested.
+    because nested objects defeat a non-greedy regex.
     """
     if not text:
         return None

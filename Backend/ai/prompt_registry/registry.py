@@ -10,9 +10,8 @@ with its metadata. This supports:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -113,15 +112,31 @@ def get_prompt_registry() -> PromptRegistry:
 def _register_default_prompts(registry: PromptRegistry) -> None:
     """Register all built-in prompts with their metadata."""
     from ai.prompts.evidence_review import EVIDENCE_REVIEW_PROMPT
-    from ai.prompts.capability_update import CAPABILITY_UPDATE_PROMPT
+    from ai.prompts.free_response import FREE_RESPONSE_PROMPT
+
+    registry.register(
+        metadata=PromptMetadata(
+            name="free_response",
+            version="1.0.0",
+            purpose="Judge an open e-learn answer against its key points, with verbatim quotes",
+            input_variables=["question", "key_points", "model_answer", "answer"],
+            output_schema="FreeResponseAssessment",
+            # A knowledge signal: it can lower confidence, never raise a level.
+            risk_level=RiskLevel.MEDIUM,
+            requires_human_review=False,
+            owner="ai-team",
+            tags=("learning", "assessment"),
+        ),
+        template=FREE_RESPONSE_PROMPT,
+    )
 
     registry.register(
         metadata=PromptMetadata(
             name="evidence_review",
-            version="2.0.0",
+            version="2.1.0",
             purpose="Assess evidence against approved Capability Spine rubric clauses",
             input_variables=[
-                "rubric", "learner_id", "capability_id", "capability_name",
+                "rubric", "capability_id", "capability_name",
                 "evidence_type", "title", "content", "context",
             ],
             output_schema="EvidenceReviewOutput",
@@ -133,20 +148,3 @@ def _register_default_prompts(registry: PromptRegistry) -> None:
         template=EVIDENCE_REVIEW_PROMPT,
     )
 
-    registry.register(
-        metadata=PromptMetadata(
-            name="capability_update",
-            version="1.0.0",
-            purpose="Recommend capability level changes based on evidence reviews",
-            input_variables=[
-                "learner_id", "capability_id", "capability_name",
-                "current_level", "evidence_reviews_json",
-            ],
-            output_schema="CapabilityUpdateOutput",
-            risk_level=RiskLevel.CRITICAL,
-            requires_human_review=True,
-            owner="ai-team",
-            tags=("capability", "update", "core"),
-        ),
-        template=CAPABILITY_UPDATE_PROMPT,
-    )

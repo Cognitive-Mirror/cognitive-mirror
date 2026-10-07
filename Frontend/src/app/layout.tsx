@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Cognitive Mirror",
-  description: "Premium login experience for the Cognitive Mirror capability intelligence platform.",
+  description: "Capability intelligence: learning, workplace evidence and manager validation.",
 };
 
 export default function RootLayout({

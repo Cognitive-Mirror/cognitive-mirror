@@ -14,14 +14,6 @@ from app.schemas.evidence import EvidenceStrengthBand
 EvidenceStrength = EvidenceStrengthBand
 
 
-class CapabilitySignal(BaseModel):
-    """A single capability signal detected in the evidence."""
-
-    capability_id: str = Field(..., description="Capability this signal maps to")
-    signal: str = Field(..., description="What was observed")
-    strength: EvidenceStrength
-
-
 class EvidenceReviewOutput(BaseModel):
     """Complete AI output from reviewing a piece of evidence.
 
@@ -31,10 +23,6 @@ class EvidenceReviewOutput(BaseModel):
 
     summary: str = Field(..., description="Concise summary of the evidence")
     evidence_type_detected: str = Field(..., description="AI-classified evidence type")
-    capability_signals: list[CapabilitySignal] = Field(
-        default_factory=list,
-        description="Capability signals found in the evidence",
-    )
     strength: EvidenceStrength = Field(..., description="Overall evidence strength")
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="AI confidence in this review"
@@ -65,5 +53,5 @@ class EvidenceReviewOutput(BaseModel):
     )
     grounded: bool = Field(
         default=False,
-        description="Whether approved rubric text was in the reviewer's context.",
+        description="Set by the guardrail from retrieval, never trusted from the model.",
     )

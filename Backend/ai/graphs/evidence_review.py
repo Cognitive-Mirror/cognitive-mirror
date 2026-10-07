@@ -61,10 +61,9 @@ def _fallback_review(state: EvidenceReviewState, reason: str) -> EvidenceReviewO
     words = len(content.split())
     has_context = bool((state.get("context") or "").strip())
 
-    if words < 40 or not has_context:
-        strength = EvidenceStrength.WEAK
-    else:
-        strength = EvidenceStrength.MODERATE
+    strength = (
+        EvidenceStrength.WEAK if words < 40 or not has_context else EvidenceStrength.MODERATE
+    )
 
     return EvidenceReviewOutput(
         summary=(
@@ -72,7 +71,6 @@ def _fallback_review(state: EvidenceReviewState, reason: str) -> EvidenceReviewO
             "based on submission length and context only."
         ),
         evidence_type_detected=state.get("evidence_type", "other"),
-        capability_signals=[],
         strength=strength,
         confidence=0.0,
         concerns=[reason, "No model-based review was performed."],
@@ -101,7 +99,6 @@ def triage(state: EvidenceReviewState) -> EvidenceReviewState:
             "review": EvidenceReviewOutput(
                 summary="Submission too short to evaluate as workplace evidence.",
                 evidence_type_detected=state.get("evidence_type", "other"),
-                capability_signals=[],
                 strength=EvidenceStrength.WEAK,
                 confidence=0.0,
                 concerns=[
@@ -137,7 +134,6 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
         prompt_value = entry.template.invoke(
             {
                 "rubric": rubric,
-                "learner_id": state.get("learner_id", ""),
                 "capability_id": state.get("capability_id", ""),
                 "capability_name": state.get("capability_name", ""),
                 "evidence_type": state.get("evidence_type", ""),
@@ -213,7 +209,7 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
     supplied = set(state.get("rubric_slugs") or [])
     cited = [c for c in (result.rubric_citations or []) if c]
 
-    fabricated = [c for c in cited if supplied and c not in supplied]
+    fabricated = [c for c in cited if c not in supplied]
     if fabricated:
         notes.append(
             "Citations not present in the supplied rubric were removed: "
@@ -252,17 +248,20 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
         notes.append("Confidence reduced: weak evidence cannot be high-confidence.")
         confidence = 0.5
 
-    # 5. Fallback output is capped and always human-reviewed.
+    # 5. Fallback output is capped at moderate and always human-reviewed.
+    strength = result.strength
     if state.get("used_fallback"):
         requires_human = True
         confidence = 0.0
-        if result.strength is EvidenceStrength.EXCEPTIONAL:
+        if strength in (EvidenceStrength.STRONG, EvidenceStrength.EXCEPTIONAL):
             notes.append("Fallback review capped at moderate strength.")
+            strength = EvidenceStrength.MODERATE
 
     return {
         **state,
         "review": result.model_copy(
             update={
+                "strength": strength,
                 "concerns": concerns,
                 "confidence": confidence,
                 "requires_human_review": requires_human,

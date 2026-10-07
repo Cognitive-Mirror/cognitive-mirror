@@ -25,6 +25,7 @@ from app.schemas.capability import (
 )
 from app.schemas.evidence import EvidenceStrengthBand
 from app.scoring import constants as C
+from app.scoring.knowledge import is_knowledge_contradiction
 
 # Ordered level scale. Index arithmetic relies on this order.
 LEVEL_ORDER: tuple[CapabilityLevel, ...] = (
@@ -260,6 +261,7 @@ def state_confidence(
     authenticity_concerns: int,
     calibration: ConfidenceCalibration,
     manager_validated: bool,
+    knowledge_contradiction: bool = False,
 ) -> float:
     """Confidence that attained_level reflects reality today (D5).
 
@@ -300,7 +302,9 @@ def state_confidence(
             C.PENALTY_CALIBRATION_MISMATCH
             if calibration is ConfidenceCalibration.OVERCONFIDENT
             else 0.0
-        ),
+        )
+        # ADR-003: knowledge can cast doubt on validated work, never prove it.
+        + (C.PENALTY_KNOWLEDGE_CONTRADICTION if knowledge_contradiction else 0.0),
     )
 
     score = raw * (1.0 - penalty)
@@ -321,6 +325,7 @@ def score_capability(
     now: datetime,
     previous_attained: CapabilityLevel = CapabilityLevel.NOVICE,
     calibration: ConfidenceCalibration = ConfidenceCalibration.UNKNOWN,
+    knowledge_mastery: float | None = None,
 ) -> CapabilityScore:
     """Score one (subject, capability) pair from its evidence history.
 
@@ -364,6 +369,7 @@ def score_capability(
     )
 
     concerns = sum(i.authenticity_concerns for i in items)
+    contradiction = is_knowledge_contradiction(knowledge_mastery, attained)
     confidence = state_confidence(
         validated_points=validated_pts,
         attained=attained,
@@ -373,6 +379,7 @@ def score_capability(
         authenticity_concerns=concerns,
         calibration=calibration,
         manager_validated=manager_validated,
+        knowledge_contradiction=contradiction,
     )
     band = confidence_band(confidence)
 
@@ -385,6 +392,12 @@ def score_capability(
         rationale.append(
             f"Validated at {attained.value}; current evidence supports "
             f"{current_support.value}. Revalidation due, not a downgrade (D1)."
+        )
+    if contradiction:
+        rationale.append(
+            f"Validated at {attained.value} but measured knowledge is "
+            f"{knowledge_mastery:.0%}: confidence reduced and a manager check is "
+            "advised. Knowledge never changes the level (ADR-003)."
         )
     if provisional_pts > 0:
         rationale.append(

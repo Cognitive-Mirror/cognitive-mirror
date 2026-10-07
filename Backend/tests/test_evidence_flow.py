@@ -2,9 +2,9 @@
 
     submit evidence -> AI review -> manager validation -> capability state
 
-Runs against a real (temporary SQLite) database and the real graph. No LLM is
-configured, so the graph takes its deterministic fallback path - which is the
-point: the workflow must be exercisable before a provider key exists.
+Runs against a temporary SQLite database and the real graph. No LLM is
+configured, so the graph takes its deterministic fallback path: the workflow
+must work before a provider key exists.
 """
 
 from __future__ import annotations
@@ -13,16 +13,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.database import Base, get_db
-from app.models import Capability, CapabilityStateEvent, Evidence
-from app.schemas.capability import CapabilityClass, CapabilityLevel
+from app.models import Capability, CapabilityStateEvent, Evidence, Role
+from app.schemas.capability import CapabilityClass
+from tests.conftest import TENANT, make_user
 
 LEARNER = "learner-001"
 MANAGER = "manager-001"
-TENANT = "default"
+OTHER_MANAGER = "manager-002"
+PEER = "learner-002"
 
 GOOD_EVIDENCE = (
     "I rebuilt the Q3 variance analysis into a one-page decision brief for the "
@@ -35,19 +34,9 @@ GOOD_EVIDENCE = (
 
 
 @pytest_asyncio.fixture
-async def app_client(tmp_path):
-    """App wired to a throwaway SQLite database."""
-    from app.auth import verify_token
-    from main import app
-
-    db_path = tmp_path / "test.db"
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}")
-    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with factory() as session:
+async def app_client(api, db):
+    """A learner reporting to a manager, and one capability."""
+    async with db() as session:
         session.add(
             Capability(
                 id="cap-ds",
@@ -57,31 +46,12 @@ async def app_client(tmp_path):
                 capability_class=CapabilityClass.ANALYTICAL,
             )
         )
+        session.add(make_user(MANAGER, Role.MANAGER))
+        await session.flush()
+        session.add(make_user(LEARNER, manager=MANAGER))
         await session.commit()
-
-    async def override_db():
-        async with factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-
-    current = {"uid": LEARNER}
-
-    def override_token():
-        return dict(current)
-
-    app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[verify_token] = override_token
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        yield client, factory, current
-
-    app.dependency_overrides.clear()
-    await engine.dispose()
+    api.uid = LEARNER
+    return api, db
 
 
 async def _submit(client, *, context_ref: str, days_ago: int = 0, content=GOOD_EVIDENCE):
@@ -101,7 +71,7 @@ async def _submit(client, *, context_ref: str, days_ago: int = 0, content=GOOD_E
 
 @pytest.mark.asyncio
 async def test_submission_creates_evidence_and_ai_review(app_client):
-    client, _, _ = app_client
+    client, _ = app_client
     response = await _submit(client, context_ref="proj-alpha")
 
     assert response.status_code == 201
@@ -115,7 +85,7 @@ async def test_submission_creates_evidence_and_ai_review(app_client):
 @pytest.mark.asyncio
 async def test_pending_evidence_contributes_no_validated_points(app_client):
     """The trust anchor: a submission alone changes nothing (thesis 17)."""
-    client, _, _ = app_client
+    client, _ = app_client
     body = (await _submit(client, context_ref="proj-alpha")).json()
 
     state = body["capability_state"]
@@ -128,7 +98,7 @@ async def test_pending_evidence_contributes_no_validated_points(app_client):
 @pytest.mark.asyncio
 async def test_learner_cannot_validate_their_own_evidence(app_client):
     """Self-validation would make the platform self-reported."""
-    client, _, _ = app_client
+    client, _ = app_client
     evidence_id = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
 
     response = await client.post(
@@ -139,11 +109,50 @@ async def test_learner_cannot_validate_their_own_evidence(app_client):
 
 
 @pytest.mark.asyncio
-async def test_manager_validation_moves_capability_state(app_client):
-    client, _, current = app_client
+async def test_only_the_learners_supervisor_can_validate(app_client):
+    """A peer, or another team's manager, cannot move someone's capability."""
+    client, factory = app_client
+    async with factory() as session:
+        session.add(make_user(OTHER_MANAGER, Role.MANAGER))
+        session.add(make_user(PEER, manager=MANAGER))
+        await session.commit()
     evidence_id = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
 
-    current["uid"] = MANAGER
+    for outsider in (PEER, OTHER_MANAGER):
+        client.uid = outsider
+        response = await client.post(
+            f"/evidence/{evidence_id}/validate",
+            json={"decision": "approved", "strength": "exceptional"},
+        )
+        assert response.status_code == 403, outsider
+
+
+@pytest.mark.asyncio
+async def test_pending_queue_shows_only_your_reports(app_client):
+    client, factory = app_client
+    async with factory() as session:
+        session.add(make_user(OTHER_MANAGER, Role.MANAGER))
+        await session.commit()
+    await _submit(client, context_ref="proj-alpha")
+
+    client.uid = MANAGER
+    queue = (await client.get("/evidence/pending")).json()
+    assert [item["learner_id"] for item in queue] == [LEARNER]
+    assert queue[0]["content"] == GOOD_EVIDENCE  # the manager can read the work
+
+    client.uid = OTHER_MANAGER
+    assert (await client.get("/evidence/pending")).json() == []
+
+    client.uid = LEARNER
+    assert (await client.get("/evidence/pending")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_manager_validation_moves_capability_state(app_client):
+    client, _ = app_client
+    evidence_id = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
+
+    client.uid = MANAGER
     response = await client.post(
         f"/evidence/{evidence_id}/validate",
         json={
@@ -165,22 +174,22 @@ async def test_manager_validation_moves_capability_state(app_client):
 @pytest.mark.asyncio
 async def test_three_independent_contexts_reach_competent(app_client):
     """D4: progression needs transfer across independent contexts."""
-    client, _, current = app_client
+    client, _ = app_client
 
     ids = []
     for i, (ctx, days) in enumerate(
         [("proj-alpha", 0), ("proj-beta", 40), ("proj-gamma", 80)]
     ):
-        current["uid"] = LEARNER
+        client.uid = LEARNER
         ids.append((await _submit(client, context_ref=ctx, days_ago=days)).json()["evidence_id"])
-        current["uid"] = MANAGER
+        client.uid = MANAGER
         await client.post(
             f"/evidence/{ids[i]}/validate",
             json={"decision": "approved", "strength": "strong"},
         )
 
     # Read final state off the last validation response.
-    current["uid"] = LEARNER
+    client.uid = LEARNER
     final = (await _submit(client, context_ref="proj-delta", days_ago=100)).json()
     state = final["capability_state"]
     assert state["independent_contexts"] >= 3
@@ -190,28 +199,28 @@ async def test_three_independent_contexts_reach_competent(app_client):
 @pytest.mark.asyncio
 async def test_same_context_repeats_do_not_stack_contexts(app_client):
     """Three submissions from one project are one demonstration (D4)."""
-    client, _, current = app_client
+    client, _ = app_client
 
     for _ in range(3):
-        current["uid"] = LEARNER
+        client.uid = LEARNER
         eid = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
-        current["uid"] = MANAGER
+        client.uid = MANAGER
         await client.post(
             f"/evidence/{eid}/validate",
             json={"decision": "approved", "strength": "strong"},
         )
 
-    current["uid"] = LEARNER
+    client.uid = LEARNER
     state = (await _submit(client, context_ref="proj-alpha")).json()["capability_state"]
     assert state["independent_contexts"] == 1
 
 
 @pytest.mark.asyncio
 async def test_rejected_evidence_contributes_nothing(app_client):
-    client, _, current = app_client
+    client, _ = app_client
     eid = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
 
-    current["uid"] = MANAGER
+    client.uid = MANAGER
     state = (
         await client.post(
             f"/evidence/{eid}/validate",
@@ -226,9 +235,9 @@ async def test_rejected_evidence_contributes_nothing(app_client):
 @pytest.mark.asyncio
 async def test_every_state_change_writes_an_audit_event(app_client):
     """Update Rule 6: state history is append-only and never anonymous."""
-    client, factory, current = app_client
+    client, factory = app_client
     eid = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
-    current["uid"] = MANAGER
+    client.uid = MANAGER
     await client.post(
         f"/evidence/{eid}/validate",
         json={"decision": "approved", "strength": "strong"},
@@ -248,10 +257,10 @@ async def test_every_state_change_writes_an_audit_event(app_client):
 @pytest.mark.asyncio
 async def test_manager_override_is_recorded_for_calibration(app_client):
     """Section 11: override rate is the primary calibration signal."""
-    client, factory, current = app_client
+    client, factory = app_client
     eid = (await _submit(client, context_ref="proj-alpha")).json()["evidence_id"]
 
-    current["uid"] = MANAGER
+    client.uid = MANAGER
     await client.post(
         f"/evidence/{eid}/validate",
         json={"decision": "approved", "strength": "exceptional"},
@@ -272,7 +281,7 @@ async def test_manager_override_is_recorded_for_calibration(app_client):
 
 @pytest.mark.asyncio
 async def test_short_submission_is_triaged_without_a_model_call(app_client):
-    client, _, _ = app_client
+    client, _ = app_client
     response = await _submit(client, context_ref="proj-alpha", content="Did the thing.")
 
     body = response.json()
@@ -285,7 +294,7 @@ async def test_short_submission_is_triaged_without_a_model_call(app_client):
 @pytest.mark.asyncio
 async def test_tenant_comes_from_the_token_not_the_payload(app_client):
     """A caller must not be able to write into another tenant."""
-    client, factory, _ = app_client
+    client, factory = app_client
     await client.post(
         "/evidence",
         json={

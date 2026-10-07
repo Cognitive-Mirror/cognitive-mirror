@@ -11,7 +11,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
-    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -31,6 +30,7 @@ from app.schemas.capability import (
     RequiredLevelSource,
     SubjectType,
 )
+from app.schemas.learning import KnowingDoing
 
 
 class Capability(Base, TenantScoped, Timestamped):
@@ -155,6 +155,22 @@ class CapabilityStateRecord(Base, TenantScoped, Timestamped):
     state_confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     confidence_band: Mapped[ConfidenceBand] = mapped_column(
         StrEnumType(ConfidenceBand), default=ConfidenceBand.REVALIDATION_DUE, nullable=False
+    )
+
+    # --- Knowledge (ADR-003). A separate dimension: never feeds attained_level.
+    knowledge_mastery: Mapped[float | None] = mapped_column(Float, nullable=True)
+    knowledge_source: Mapped[str] = mapped_column(
+        String(32), default="none",
+        doc="post_assessment | knowledge_checks | pre_assessment | none",
+    )
+    knowledge_pre: Mapped[float | None] = mapped_column(Float, nullable=True)
+    knowledge_post: Mapped[float | None] = mapped_column(Float, nullable=True)
+    knowledge_gain: Mapped[float | None] = mapped_column(
+        Float, nullable=True, doc="Hake normalised gain, pre -> post."
+    )
+    knowing_doing: Mapped[KnowingDoing] = mapped_column(
+        StrEnumType(KnowingDoing, length=40),
+        default=KnowingDoing.INSUFFICIENT_DATA, nullable=False,
     )
 
     recommended_next_action: Mapped[str] = mapped_column(Text, default="")

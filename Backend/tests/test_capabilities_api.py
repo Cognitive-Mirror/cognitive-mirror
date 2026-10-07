@@ -12,34 +12,26 @@ from datetime import UTC, datetime, timedelta
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.database import Base, get_db
-from app.models import Capability, CapabilityRequirement, User
+from app.models import Capability, CapabilityRequirement, Role
 from app.schemas.capability import (
     CapabilityClass,
     CapabilityLevel,
     RequiredLevelSource,
 )
+from tests.conftest import TENANT, make_user
 
-TENANT = "default"
 LEARNER = "u-learner"
 OTHER_LEARNER = "u-other"
 MANAGER = "u-manager"
 STRANGER = "u-stranger"
+LONE_MANAGER = "u-lone-manager"
 
 
 @pytest_asyncio.fixture
-async def client(tmp_path):
-    from app.auth import verify_token
-    from main import app
-
-    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path/'c.db'}")
-    factory = async_sessionmaker(bind=engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    async with factory() as s:
+async def client(api, db):
+    """Two learners reporting to one manager, an unrelated learner, two capabilities."""
+    async with db() as s:
         s.add_all(
             [
                 Capability(
@@ -50,29 +42,16 @@ async def client(tmp_path):
                     id="cap-b", tenant_id=TENANT, slug="b", name="Beta",
                     capability_class=CapabilityClass.INTERPERSONAL,
                 ),
-                User(
-                    id=MANAGER, tenant_id=TENANT, firebase_uid="m",
-                    email="m@x.com", role="manager",
-                ),
+                make_user(MANAGER, Role.MANAGER),
+                make_user(LONE_MANAGER, Role.MANAGER),
             ]
         )
         await s.flush()
         s.add_all(
             [
-                User(
-                    id=LEARNER, tenant_id=TENANT, firebase_uid="l",
-                    email="l@x.com", role="learner",
-                    role_ref="analyst", manager_id=MANAGER,
-                ),
-                User(
-                    id=OTHER_LEARNER, tenant_id=TENANT, firebase_uid="o",
-                    email="o@x.com", role="learner",
-                    role_ref="analyst", manager_id=MANAGER,
-                ),
-                User(
-                    id=STRANGER, tenant_id=TENANT, firebase_uid="s",
-                    email="s@x.com", role="learner",
-                ),
+                make_user(LEARNER, manager=MANAGER, role_ref="analyst"),
+                make_user(OTHER_LEARNER, manager=MANAGER, role_ref="analyst"),
+                make_user(STRANGER),
                 CapabilityRequirement(
                     id="req-a", tenant_id=TENANT, capability_id="cap-a",
                     required_level=CapabilityLevel.PROFICIENT,
@@ -84,32 +63,13 @@ async def client(tmp_path):
             ]
         )
         await s.commit()
-
-    async def override_db():
-        async with factory() as session:
-            try:
-                yield session
-                await session.commit()
-            except Exception:
-                await session.rollback()
-                raise
-
-    current = {"uid": LEARNER}
-    app.dependency_overrides[get_db] = override_db
-    app.dependency_overrides[verify_token] = lambda: dict(current)
-
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as c:
-        yield c, current
-
-    app.dependency_overrides.clear()
-    await engine.dispose()
+    api.uid = LEARNER
+    return api
 
 
 @pytest.mark.asyncio
 async def test_lists_the_capability_spine(client):
-    c, _ = client
+    c = client
     body = (await c.get("/capabilities")).json()
     assert {row["name"] for row in body} == {"Alpha", "Beta"}
 
@@ -117,7 +77,7 @@ async def test_lists_the_capability_spine(client):
 @pytest.mark.asyncio
 async def test_returns_capabilities_with_no_evidence_yet(client):
     """Omitting untouched capabilities would hide the gaps we exist to surface."""
-    c, _ = client
+    c = client
     body = (await c.get("/capabilities/me")).json()
 
     assert len(body) == 2
@@ -127,7 +87,7 @@ async def test_returns_capabilities_with_no_evidence_yet(client):
 
 @pytest.mark.asyncio
 async def test_payload_keeps_the_d1_split_visible(client):
-    c, _ = client
+    c = client
     row = (await c.get("/capabilities/me")).json()[0]
 
     for field in (
@@ -143,7 +103,7 @@ async def test_payload_keeps_the_d1_split_visible(client):
 @pytest.mark.asyncio
 async def test_required_level_carries_provenance(client):
     """D6: a bare number is not an acceptable answer."""
-    c, _ = client
+    c = client
     body = (await c.get("/capabilities/me")).json()
     alpha = next(r for r in body if r["capability_name"] == "Alpha")
 
@@ -154,7 +114,7 @@ async def test_required_level_carries_provenance(client):
 
 @pytest.mark.asyncio
 async def test_capability_without_a_requirement_falls_back(client):
-    c, _ = client
+    c = client
     body = (await c.get("/capabilities/me")).json()
     beta = next(r for r in body if r["capability_name"] == "Beta")
 
@@ -164,8 +124,8 @@ async def test_capability_without_a_requirement_falls_back(client):
 
 @pytest.mark.asyncio
 async def test_manager_can_view_their_own_report(client):
-    c, current = client
-    current["uid"] = MANAGER
+    c = client
+    c.uid = MANAGER
     response = await c.get(f"/capabilities/learner/{LEARNER}")
     assert response.status_code == 200
 
@@ -173,16 +133,16 @@ async def test_manager_can_view_their_own_report(client):
 @pytest.mark.asyncio
 async def test_non_manager_cannot_view_someone_elses_state(client):
     """Capability state is developmental data, not browsable."""
-    c, current = client
-    current["uid"] = STRANGER
+    c = client
+    c.uid = STRANGER
     response = await c.get(f"/capabilities/learner/{LEARNER}")
     assert response.status_code == 403
 
 
 @pytest.mark.asyncio
 async def test_learner_can_view_their_own_state(client):
-    c, current = client
-    current["uid"] = LEARNER
+    c = client
+    c.uid = LEARNER
     response = await c.get(f"/capabilities/learner/{LEARNER}")
     assert response.status_code == 200
 
@@ -190,8 +150,8 @@ async def test_learner_can_view_their_own_state(client):
 @pytest.mark.asyncio
 async def test_team_aggregate_reports_coverage_not_an_average(client):
     """D2: no mean of an ordinal scale, anywhere in the payload."""
-    c, current = client
-    current["uid"] = MANAGER
+    c = client
+    c.uid = MANAGER
     body = (await c.get("/capabilities/team")).json()
 
     assert len(body) == 2
@@ -205,10 +165,28 @@ async def test_team_aggregate_reports_coverage_not_an_average(client):
 
 @pytest.mark.asyncio
 async def test_team_aggregate_is_empty_for_a_manager_with_no_reports(client):
-    c, current = client
-    current["uid"] = STRANGER
+    c = client
+    c.uid = LONE_MANAGER
     body = (await c.get("/capabilities/team")).json()
     assert all(row["subject_count"] == 0 for row in body)
+
+
+@pytest.mark.asyncio
+async def test_learners_cannot_read_team_aggregates(client):
+    c = client
+    c.uid = LEARNER
+    assert (await c.get("/capabilities/team")).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_first_sign_in_provisions_a_learner(client):
+    """An unknown Firebase account becomes a learner, never a manager."""
+    c = client
+    c.uid = "brand-new-firebase-uid"
+    me = (await c.get("/auth/me")).json()
+    assert me["role"] == "learner"
+    assert me["id"] != "brand-new-firebase-uid"  # users.id is our own key
+    assert (await c.get("/capabilities/team")).status_code == 403
 
 
 @pytest.mark.asyncio

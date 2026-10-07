@@ -97,11 +97,27 @@ def _build_openai(config: AIConfig) -> BaseChatModel:
             "Install langchain-openai: pip install langchain-openai"
         ) from e
 
+    kwargs: dict[str, Any] = {}
+    if config.base_url:
+        # Any OpenAI-compatible server: NVIDIA NIM, vLLM, Together, local.
+        kwargs["base_url"] = config.base_url
+        # Hybrid reasoning models (GLM, Qwen, DeepSeek) on these servers take
+        # the thinking switch through the chat template. Servers that do not
+        # know the key ignore it. Reasoning text comes back in a separate
+        # `reasoning_content` field which LangChain does not fold into
+        # `content`, so it can never be parsed as the answer.
+        kwargs["extra_body"] = {
+            "chat_template_kwargs": {"enable_thinking": config.reasoning}
+        }
+
     return ChatOpenAI(
         model=config.model_name,
         api_key=config.api_key,
         temperature=config.temperature,
         max_tokens=config.max_tokens,
+        timeout=config.timeout,
+        max_retries=1,
+        **kwargs,
     )
 
 

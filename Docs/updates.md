@@ -223,3 +223,25 @@ NOT DONE - no key is configured yet, so no LLM call has run and the NVIDIA struc
         path is untested against a real model. Fusion weights are inherited defaults, not
         fitted to this corpus; calibration needs a labelled evaluation set that does not exist
         yet. The signed-in UI is still unverified without Firebase credentials.
+
+---------------------------------------------------------------------------------------------
+07-10-2026
+FIX - backend would not start: port 8000 is held by another local app (Claude Science), so
+        `npm run dev` exited and the frontend talked to that app instead. Backend now runs on
+        8100 (package.json, Frontend/.env.example, services/api.ts). --reload watches Backend/ only.
+FIX - one identity everywhere. Routes resolve the Firebase login to a `users` row
+        (app/auth.py current_user); users.id is the stored learner id. Previously team view,
+        learner view and role/programme requirements silently found nobody for real logins.
+SECURITY - manager actions now require supervising the learner (manager of, or admin):
+        validate evidence, pending queue, open-answer queue and marking. Before, any signed-in
+        account could validate anyone else's evidence.
+SECURITY - Firebase tokens are verified without a service account; insecure fallback off.
+        Sign out now actually signs out of Firebase.
+FIX - evidence guardrails: citations are stripped when no rubric was supplied; fallback reviews
+        are really capped at moderate. Manager queue now shows the evidence text itself.
+REMOVED - chatbot (chat page, panel, Firestore messaging), mock-data pages (capability map,
+        impact, practice, user management, insight manager), unused schemas and prompts,
+        empty docs and placeholder folders, unused assets and CSS.
+FRONTEND - one AppShell holds navigation for every role; role comes from GET /auth/me, not
+        Firestore. Pages split into small components; shared useResource hook.
+TESTS - 114 passing, hermetic (no network). Shared fixtures in tests/conftest.py. Ruff clean.

@@ -15,7 +15,6 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
-    DateTime,
     Float,
     ForeignKey,
     Integer,
@@ -135,6 +134,19 @@ class EvidenceReview(Base, TenantScoped, Timestamped):
             "evaluation should be able to segment quality by this."
         ),
     )
+
+    @property
+    def concern_list(self) -> list[str]:
+        return [c for c in self.concerns.split("\n") if c]
+
+    @property
+    def citation_list(self) -> list[str]:
+        return [c for c in self.rubric_citations.split(",") if c]
+
+    @property
+    def model_generated(self) -> bool:
+        """False when the deterministic fallback produced this review."""
+        return not self.model_name.startswith("fallback")
 
 
 class ManagerValidation(Base, TenantScoped, Timestamped):

@@ -20,7 +20,8 @@ dependencies = [
     # --- AI / LLM ---
     "langchain-core>=0.3.0",
     "langgraph>=0.2.0",
-    "langchain-nvidia-ai-endpoints>=0.3.0",
+    "langchain-openai>=0.3.0",              # default: any OpenAI-compatible endpoint
+    "langchain-nvidia-ai-endpoints>=0.3.0", # LLM_PROVIDER=nvidia
 
     # --- Retrieval (ARC, vendored at Backend/hybrid_rag) ---
     "scikit-learn>=1.4",
@@ -49,9 +50,21 @@ eval = [
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+extend-exclude = ["hybrid_rag", "migrations/versions"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+# `from app.scoring import constants as C` reads as a namespace of tunables,
+# which is the point of keeping every constant in one module.
+ignore = ["N812"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency injection is declared as a default argument by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# Seed scripts are content: long prose strings read better unwrapped.
+"scripts/seed_*.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -22,7 +22,7 @@ from app.schemas.capability import CapabilityClass, CapabilityLevel
 from app.schemas.evidence import EvidenceStrengthBand
 
 # Bump on ANY change below. Format: major.minor - major = structural change.
-SCORING_MODEL_VERSION = "0.2.0"
+SCORING_MODEL_VERSION = "0.3.0"
 
 
 # --- D1: decay -------------------------------------------------------------
@@ -106,6 +106,24 @@ CONFIDENCE_HIGH = 0.75           # [seeded]
 CONFIDENCE_MODERATE = 0.50       # [seeded]
 CONFIDENCE_LOW = 0.35            # [seeded]
 REVALIDATION_THRESHOLD = 0.35    # [seeded] - below this, flag a manager check-in
+
+# --- Knowledge signals (ADR-003) --------------------------------------------
+
+# Knowledge never raises attained_level. This is not a tunable; it is listed so
+# that anyone looking for "the weight of quiz scores" finds the answer here.
+KNOWLEDGE_CAN_RAISE_LEVEL = False  # [structural]
+
+# Mastery at or above this, with nothing validated at work, is the transfer gap:
+# "knows it, has not applied it". The most actionable state in the product.
+KNOWLEDGE_MASTERY_HIGH = 0.70  # [seeded]
+
+# Mastery below this, while validated at or above the level below, is a
+# contradiction between knowledge and validated work. It lowers confidence and
+# asks a human; it never lowers the level.
+KNOWLEDGE_MASTERY_LOW = 0.50  # [seeded]
+KNOWLEDGE_CONTRADICTION_MIN_LEVEL = CapabilityLevel.COMPETENT  # [seeded]
+PENALTY_KNOWLEDGE_CONTRADICTION = 0.10  # [seeded]
+
 
 # --- D2: aggregates --------------------------------------------------------
 

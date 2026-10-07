@@ -1,5 +1,5 @@
-import { CapabilityWorkspace } from "@/components/CapabilityWorkspace";
+import { LearnerOverview } from "@/components/dashboard/LearnerOverview";
 
-export default function LearnerPage() {
-  return <CapabilityWorkspace role="learner" />;
+export default function Page() {
+  return <LearnerOverview />;
 }

@@ -172,7 +172,7 @@ async def test_trace_records_which_providers_ran(session):
 def _review(**kwargs) -> EvidenceReviewOutput:
     base = dict(
         summary="Summary.", evidence_type_detected="workplace_application",
-        capability_signals=[], strength=EvidenceStrength.STRONG, confidence=0.9,
+        strength=EvidenceStrength.STRONG, confidence=0.9,
         concerns=[], recommendation="Proceed.", requires_human_review=False,
         reasoning="Because.", rubric_citations=[], grounded=True,
     )
@@ -191,6 +191,28 @@ def test_fabricated_citations_are_stripped():
     assert out["review"].rubric_citations == ["CAP-X.RUBRIC.STRONG"]
     assert out["review"].requires_human_review is True
     assert any("not present in the supplied rubric" in n for n in out["guardrail_notes"])
+
+
+def test_citations_are_fabricated_when_nothing_was_supplied():
+    """With no rubric in context, any citation came from the model's memory."""
+    state = {
+        "review": _review(rubric_citations=["CAP-X.RUBRIC.STRONG"]),
+        "rubric_slugs": [],
+        "grounded": False,
+    }
+    assert guardrails(state)["review"].rubric_citations == []
+
+
+def test_fallback_review_is_capped_at_moderate():
+    state = {
+        "review": _review(strength=EvidenceStrength.EXCEPTIONAL),
+        "rubric_slugs": [],
+        "grounded": False,
+        "used_fallback": True,
+    }
+    out = guardrails(state)["review"]
+    assert out.strength is EvidenceStrength.MODERATE
+    assert out.confidence == 0.0
 
 
 def test_ungrounded_review_is_forced_to_human_and_capped():
@@ -247,7 +269,7 @@ class TestJSONExtraction:
         assert _extract_json_object(raw) == '{"a": 1, "b": "x"}'
 
     def test_nested_objects_are_not_truncated(self):
-        """A greedy regex breaks here; capability_signals is nested."""
+        """A non-greedy regex would stop at the first closing brace."""
         raw = 'text {"a": {"b": {"c": 1}}, "d": 2} more'
         assert _extract_json_object(raw) == '{"a": {"b": {"c": 1}}, "d": 2}'
 

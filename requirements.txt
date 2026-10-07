@@ -16,10 +16,11 @@ python-dotenv>=1.0
 firebase-admin>=6.5
 pyjwt>=2.8
 
-# --- AI / LLM (model-agnostic — see Backend/ai/utils/llm_factory.py) ---
+# --- AI / LLM (provider-agnostic; see Backend/ai/utils/llm_factory.py) ---
 langchain-core>=0.3.0
 langgraph>=0.2.0
-langchain-nvidia-ai-endpoints>=0.3.0
+langchain-openai>=0.3.0                # default: any OpenAI-compatible endpoint
+langchain-nvidia-ai-endpoints>=0.3.0   # LLM_PROVIDER=nvidia
 
 # --- Retrieval (ARC hybrid RAG, vendored at Backend/hybrid_rag) ---
 scikit-learn>=1.4        # LSA fallback embedder; no network, no model download

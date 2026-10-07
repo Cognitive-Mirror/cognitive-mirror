@@ -253,3 +253,7 @@ cognitive_mirror.db
 
 # Editor / tooling
 .claude/
+
+# Any *.env file, not just .env — e.g. api_keys.env
+*.env
+!*.env.example

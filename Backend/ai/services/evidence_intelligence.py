@@ -35,22 +35,24 @@ from app.models import (
 from app.schemas.capability import (
     CapabilityLevel,
     CapabilityStatus,
-    RequiredLevelSource,
     SignalSource,
     SubjectType,
     ValidationStatus,
 )
 from app.schemas.evidence import EvidenceStrengthBand
+from app.schemas.learning import KnowingDoing
 from app.schemas.review import ReviewDecision
 from app.scoring import constants as C
-from app.services.requirement_resolver import resolve_required_level
-from rag.retrieval import ground_evidence_review
 from app.scoring.engine import (
     ScoredEvidence,
     apply_step_limit,
     level_index,
     score_capability,
 )
+from app.scoring.knowledge import KnowledgeSnapshot, knowing_doing
+from app.services.knowledge_state import load_knowledge_snapshot
+from app.services.requirement_resolver import resolve_required_level
+from rag.retrieval import ground_evidence_review
 
 logger = logging.getLogger(__name__)
 
@@ -159,28 +161,35 @@ async def _load_scored_evidence(
             )
         )
     ).scalars().all()
+    ids = [e.id for e in rows]
+
+    reviews = {
+        r.evidence_id: r
+        for r in (
+            await session.execute(
+                select(EvidenceReview).where(EvidenceReview.evidence_id.in_(ids))
+            )
+        ).scalars()
+    }
+    # Latest decision per evidence item wins.
+    validations: dict[str, ManagerValidation] = {}
+    for v in (
+        await session.execute(
+            select(ManagerValidation)
+            .where(ManagerValidation.evidence_id.in_(ids))
+            .order_by(ManagerValidation.decided_at)
+        )
+    ).scalars():
+        validations[v.evidence_id] = v
 
     scored: list[ScoredEvidence] = []
     for item in rows:
-        validation = (
-            await session.execute(
-                select(ManagerValidation)
-                .where(ManagerValidation.evidence_id == item.id)
-                .order_by(ManagerValidation.decided_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-
-        ai_review = (
-            await session.execute(
-                select(EvidenceReview).where(EvidenceReview.evidence_id == item.id)
-            )
-        ).scalar_one_or_none()
-
+        validation = validations.get(item.id)
+        review = reviews.get(item.id)
         if validation is not None:
             strength = validation.strength
-        elif ai_review is not None:
-            strength = ai_review.strength
+        elif review is not None:
+            strength = review.strength
         else:
             strength = EvidenceStrengthBand.WEAK
 
@@ -191,9 +200,7 @@ async def _load_scored_evidence(
                 validation_status=item.validation_status,
                 occurred_at=item.occurred_at,
                 context_ref=item.context_ref or item.id,
-                authenticity_concerns=(
-                    ai_review.authenticity_concern_count if ai_review else 0
-                ),
+                authenticity_concerns=review.authenticity_concern_count if review else 0,
             )
         )
     return scored
@@ -242,11 +249,18 @@ async def recompute_capability_state(
         learner_id=learner_id,
         capability_id=capability_id,
     )
+    knowledge = await load_knowledge_snapshot(
+        session,
+        tenant_id=tenant_id,
+        learner_id=learner_id,
+        capability_id=capability_id,
+    )
     score = score_capability(
         items,
         capability_class=capability.capability_class,
         now=datetime.now(UTC),
         previous_attained=previous_level,
+        knowledge_mastery=knowledge.mastery,
     )
 
     # Update Rule 2 belongs to the transition, not to the recompute.
@@ -289,16 +303,28 @@ async def recompute_capability_state(
     record.confidence_band = score.confidence_band
     record.scoring_model_version = score.scoring_model_version
 
+    # ADR-003: the knowledge dimension, reported beside the level, never in it.
+    record.knowledge_mastery = knowledge.mastery
+    record.knowledge_source = knowledge.mastery_source
+    record.knowledge_pre = knowledge.pre_score
+    record.knowledge_post = knowledge.post_score
+    record.knowledge_gain = knowledge.normalized_gain
+    record.knowing_doing = knowing_doing(knowledge.mastery, attained)
+
     if score.revalidation_due and attained is not CapabilityLevel.NOVICE:
         record.status = CapabilityStatus.REVALIDATION_DUE
     elif attained is CapabilityLevel.NOVICE and not items:
-        record.status = CapabilityStatus.NOT_STARTED
+        record.status = (
+            CapabilityStatus.IN_PROGRESS
+            if knowledge.activities_completed
+            else CapabilityStatus.NOT_STARTED
+        )
     elif score.validated_points > 0:
         record.status = CapabilityStatus.VALIDATED
     else:
         record.status = CapabilityStatus.UNDER_REVIEW
 
-    record.recommended_next_action = _next_action(score, record)
+    record.recommended_next_action = _next_action(score, record, knowledge)
 
     # Update Rule 6: append-only history. Never overwrite.
     session.add(
@@ -322,11 +348,14 @@ async def recompute_capability_state(
     return record
 
 
-def _next_action(score, record: CapabilityStateRecord) -> str:
+def _next_action(
+    score, record: CapabilityStateRecord, knowledge: KnowledgeSnapshot | None = None
+) -> str:
     """Recommend the next capability-movement action (thesis 18).
 
-    Never "recommend content" - the thesis is explicit that the output must be
-    the next action that moves capability.
+    The output is the next step that moves capability, not a content
+    recommendation. Learning activities appear only where knowledge is the
+    actual blocker; once knowledge is there, every path points at work.
     """
     if score.provisional_points > 0:
         return "Awaiting manager validation of submitted evidence."
@@ -334,6 +363,24 @@ def _next_action(score, record: CapabilityStateRecord) -> str:
         return (
             f"Revalidation due: last validated at {record.attained_level.value}, "
             "current evidence supports less. Arrange a manager check-in."
+        )
+    kd = record.knowing_doing
+    if kd is KnowingDoing.APPLIED_WITHOUT_KNOWLEDGE:
+        return (
+            f"Validated at {record.attained_level.value}, but measured knowledge is "
+            f"{knowledge.mastery:.0%}. Review with your manager whether the "
+            "assessment or the validation is off."
+        )
+    if kd is KnowingDoing.KNOWS_NOT_APPLIED:
+        return (
+            f"You know this ({knowledge.mastery:.0%} on "
+            f"{knowledge.mastery_source.replace('_', ' ')}). The next step is "
+            "applying it at work and submitting the evidence."
+        )
+    if kd is KnowingDoing.DEVELOPING and knowledge is not None:
+        return (
+            f"Knowledge at {knowledge.mastery:.0%}. Close the gaps in the e-learn "
+            "checks, then apply it at work."
         )
     if score.independent_contexts < C.LEVEL_CONTEXT_REQUIREMENTS.get(
         record.required_level, 0
