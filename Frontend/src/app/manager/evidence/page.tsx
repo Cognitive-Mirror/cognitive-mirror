@@ -1,2 +1,5 @@
-import { ManagerEvidencePage } from "@/components/EvidenceWorkflows";
-export default function Page() { return <ManagerEvidencePage />; }
+import { ManagerEvidencePage } from "@/components/evidence/ManagerEvidencePage";
+
+export default function Page() {
+  return <ManagerEvidencePage />;
+}

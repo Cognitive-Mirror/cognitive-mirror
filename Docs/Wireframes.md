@@ -1,5 +1,10 @@
 # Cognitive Mirror Role Wireframes & User Flows
 
+> **Superseded (2026-10-07).** This describes the July 2026 mock UI. Several screens
+> here (capability map, impact signals, practice, user management, insight manager,
+> chat) were removed because they displayed invented data. The shipped routes and
+> navigation are defined in `Frontend/src/components/AppShell.tsx`.
+
 This specification defines the information architecture, wireframes, conditional interactions, and role-specific data flows for the learner, manager, and admin experiences.
 
 ## Global shell

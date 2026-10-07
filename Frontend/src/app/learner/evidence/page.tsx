@@ -1,2 +1,5 @@
-import { LearnerEvidencePage } from "@/components/EvidenceWorkflows";
-export default function Page() { return <LearnerEvidencePage />; }
+import { LearnerEvidencePage } from "@/components/evidence/LearnerEvidencePage";
+
+export default function Page() {
+  return <LearnerEvidencePage />;
+}

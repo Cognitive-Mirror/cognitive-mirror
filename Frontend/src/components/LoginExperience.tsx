@@ -1,41 +1,21 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+/**
+ * Sign-in screen: brand panel and login card.
+ *
+ * Firebase proves who someone is; the role - and so the landing page - comes
+ * from the backend afterwards (GET /auth/me). Nothing here lets the user pick a
+ * role.
+ */
+
+import { type FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  ChevronDown,
-  KeyRound,
-  LockKeyhole,
-  Mail,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
-} from "lucide-react";
-import {
-  getDemoAccounts,
-  ROLES,
-  type RoleConfig,
-  type RoleId,
-} from "@/lib/auth";
+import { ArrowRight, ChevronDown, KeyRound, LockKeyhole, Mail, Sparkles } from "lucide-react";
 
-import {
-  login,
-  loginWithGoogle,
-  getUserRole,
-  verifyBackendToken,
-} from "@/services/authService";
-
-export function useRole(initialRoleId: RoleId = "learner") {
-  const [selectedRoleId, setSelectedRoleId] = useState<RoleId>(initialRoleId);
-  const selectedRole = useMemo(
-    () => ROLES.find((r) => r.id === selectedRoleId) ?? ROLES[0],
-    [selectedRoleId]
-  );
-  return { roles: ROLES, selectedRole, selectedRoleId, setSelectedRoleId };
-}
+import { DEMO_ACCOUNTS, ROLE_HOME, ROLE_LABEL } from "@/lib/auth";
+import { resetPassword, signInWithEmail, signInWithGoogle } from "@/services/authService";
+import { clearSession, loadSession } from "@/services/session";
 
 /* ── 1. Background animation (decorative SVG + particles) ── */
 const PARTICLES = [
@@ -187,14 +167,8 @@ export function BrandSection() {
   );
 }
 
-/* ── 3. DemoAccounts ── */
-const demoAccounts = getDemoAccounts();
-
-type DemoAccountsProps = {
-  onSelectAccount: (a: { email: string; password: string; roleId: RoleId }) => void;
-};
-
-export function DemoAccounts({ onSelectAccount }: DemoAccountsProps) {
+/* ── 3. Demo accounts ── */
+function DemoAccounts({ onSelect }: { onSelect: (email: string, password: string) => void }) {
   const [isOpen, setIsOpen] = useState(false);
   return (
     <div className="demo-panel">
@@ -213,8 +187,8 @@ export function DemoAccounts({ onSelectAccount }: DemoAccountsProps) {
             <KeyRound className="h-4 w-4" style={{ color: "var(--fg)" }} />
           </span>
           <span>
-            <span className="block text-sm font-medium" style={{ color: "var(--fg)" }}>Demo Accounts</span>
-            <span className="block text-xs" style={{ color: "var(--fg-muted)" }}>One click fills the login form</span>
+            <span className="block text-sm font-medium" style={{ color: "var(--fg)" }}>Demo accounts</span>
+            <span className="block text-xs" style={{ color: "var(--fg-muted)" }}>One click fills the form</span>
           </span>
         </span>
         <ChevronDown
@@ -234,25 +208,17 @@ export function DemoAccounts({ onSelectAccount }: DemoAccountsProps) {
             style={{ borderTop: "1px solid var(--border)" }}
           >
             <div className="space-y-2 p-4">
-              {demoAccounts.map((account) => (
+              {DEMO_ACCOUNTS.map((account) => (
                 <button
-                  key={account.roleId}
+                  key={account.email}
                   type="button"
-                  onClick={() => onSelectAccount(account)}
+                  onClick={() => onSelect(account.email, account.password)}
                   className="demo-panel-row"
                 >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
-                        {account.roleId.charAt(0).toUpperCase() + account.roleId.slice(1)}
-                      </p>
-                      <p className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>{account.email}</p>
-                    </div>
-                    <div className="text-right text-xs" style={{ color: "var(--fg-subtle)" }}>
-                      <p>{account.password}</p>
-                      <p>{account.redirect}</p>
-                    </div>
-                  </div>
+                  <p className="text-sm font-semibold" style={{ color: "var(--fg)" }}>
+                    {ROLE_LABEL[account.role]}
+                  </p>
+                  <p className="mt-0.5 text-xs" style={{ color: "var(--fg-muted)" }}>{account.email}</p>
                 </button>
               ))}
             </div>
@@ -263,372 +229,189 @@ export function DemoAccounts({ onSelectAccount }: DemoAccountsProps) {
   );
 }
 
-/* ── 4. RoleSelector ── */
-const ROLE_ICONS = { admin: ShieldCheck, manager: BriefcaseBusiness, learner: UserRound } as const;
+/* ── 4. Login card ── */
+type Feedback = { tone: "error" | "info"; text: string } | null;
 
-type RoleSelectorProps = {
-  roles: RoleConfig[];
-  selectedRoleId: RoleId;
-  onSelect: (id: RoleId) => void;
-};
-
-export function RoleSelector({ roles, selectedRoleId, onSelect }: RoleSelectorProps) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-medium" style={{ color: "var(--fg)" }}>Choose a role</p>
-        <p className="text-xs" style={{ color: "var(--fg-subtle)" }}>Mock state only</p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-3">
-        {roles.map((role) => {
-          const Icon = ROLE_ICONS[role.id as RoleId];
-          const selected = role.id === selectedRoleId;
-          return (
-            <motion.button
-              key={role.id}
-              type="button"
-              whileHover={{ y: -3 }}
-              whileTap={{ scale: 0.985 }}
-              onClick={() => onSelect(role.id)}
-              aria-pressed={selected}
-              className={`role-card${selected ? " selected" : ""}`}
-            >
-              <div
-                className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl"
-                style={{ border: "1px solid var(--border)", background: "var(--bg-input)" }}
-              >
-                <Icon className="h-5 w-5" style={{ color: "var(--fg)" }} />
-              </div>
-              <p className="text-sm font-semibold" style={{ color: "var(--fg)" }}>{role.name}</p>
-              <p className="mt-1.5 text-xs leading-5" style={{ color: "var(--fg-muted)" }}>{role.description}</p>
-            </motion.button>
-          );
-        })}
-      </div>
-    </div>
-  );
+/** Firebase error codes, in words a person can act on. */
+function signInMessage(err: unknown): string {
+  const code = (err as { code?: string })?.code ?? "";
+  if (["auth/invalid-credential", "auth/wrong-password", "auth/user-not-found"].includes(code)) {
+    return "That email and password do not match an account.";
+  }
+  if (code === "auth/too-many-requests") return "Too many attempts. Wait a moment and try again.";
+  if (code === "auth/popup-closed-by-user") return "Google sign-in was closed before it finished.";
+  return err instanceof Error ? err.message : "Sign-in failed.";
 }
-
-/* ── 5. LoginCard ── */
-type FormState = { email: string; password: string; rememberMe: boolean };
-const INIT: FormState = { email: "", password: "", rememberMe: true };
 
 export function LoginCard() {
   const router = useRouter();
-  const { roles, selectedRole, selectedRoleId, setSelectedRoleId } = useRole();
-  const [form, setForm] = useState<FormState>(INIT);
-  const [feedback, setFeedback] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [feedback, setFeedback] = useState<Feedback>(null);
+  const [busy, setBusy] = useState(false);
 
-  const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
-    setForm((f) => ({ ...f, [k]: v }));
-
-  const handleSubmit = async (
-    e: FormEvent<HTMLFormElement>
-  ) => {
-
-    e.preventDefault();
-
-    setFeedback("");
-
-    setIsSubmitting(true);
-
+  async function run(signIn: () => Promise<unknown>) {
+    setFeedback(null);
+    setBusy(true);
     try {
-
-      //-----------------------------------
-      // Firebase Authentication
-      //-----------------------------------
-
-      const credential = await login(
-        form.email,
-        form.password
-      );
-
-      //-----------------------------------
-      // Verify token with FastAPI backend
-      //-----------------------------------
-
-      const idToken = await credential.user.getIdToken();
-      const verifiedUser = await verifyBackendToken(idToken);
-      console.log("FastAPI backend verified user:", verifiedUser);
-
-      //-----------------------------------
-      // Get role from Firestore
-      //-----------------------------------
-
-      const role = await getUserRole(
-        credential.user.uid
-      );
-
-      //-----------------------------------
-      // Redirect
-      //-----------------------------------
-
-      if (role === "admin") {
-
-        setFeedback("Welcome Admin.");
-
-        router.push("/admin");
-
-      }
-
-      else if (role === "manager") {
-
-        setFeedback("Welcome Manager.");
-
-        router.push("/manager");
-
-      }
-
-      else {
-
-        setFeedback("Welcome Learner.");
-
-        router.push("/learner");
-
-      }
-
-    }
-
-    catch (err) {
-
-      if (err instanceof Error)
-
-        setFeedback(err.message);
-
-      else
-
-        setFeedback("Login failed.");
-
-    }
-
-    finally {
-
-      setIsSubmitting(false);
-
-    }
-
-  };
-
-  const handleGoogleLogin = async () => {
-
-    setFeedback("");
-
-    setIsSubmitting(true);
-
-    try {
-
-      const result = await loginWithGoogle();
-
-      setFeedback("Welcome!");
-
-      if (result.role === "admin") {
-
-        router.push("/admin");
-
-      } else if (result.role === "manager") {
-
-        router.push("/manager");
-
-      } else {
-
-        router.push("/learner");
-
-      }
-
+      await signIn();
+      clearSession();
+      const me = await loadSession();
+      router.push(ROLE_HOME[me.role]);
     } catch (err) {
-
-      if (err instanceof Error)
-
-        setFeedback(err.message);
-
-      else
-
-        setFeedback("Google Sign-In failed.");
-
-    } finally {
-
-      setIsSubmitting(false);
-
+      setFeedback({ tone: "error", text: signInMessage(err) });
+      setBusy(false);
     }
+  }
 
-  };
+  async function forgotPassword() {
+    if (!email) {
+      setFeedback({ tone: "info", text: "Enter your email above first." });
+      return;
+    }
+    try {
+      await resetPassword(email);
+      setFeedback({ tone: "info", text: `If ${email} has an account, a reset link is on its way.` });
+    } catch (err) {
+      setFeedback({ tone: "error", text: signInMessage(err) });
+    }
+  }
 
-  const handleAutofill = (a: { email: string; password: string; roleId: RoleId }) => {
-    setSelectedRoleId(a.roleId);
-    setForm({ email: a.email, password: a.password, rememberMe: true });
-    setFeedback(`Filled ${a.roleId} demo credentials.`);
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void run(() => signInWithEmail(email, password));
   };
 
   return (
-    <div className="w-full max-w-xl">
-      <motion.div
-        initial={{ opacity: 0, x: 20 }}
-        animate={{ opacity: 1, x: 0 }}
-        transition={{ duration: 0.5, ease: "easeOut" }}
-        className="login-card relative overflow-hidden p-6 shadow-[0_32px_80px_rgba(0,0,0,0.25)] sm:p-8"
-      >
-        {/* top accent line */}
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent" />
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="login-card relative w-full max-w-xl overflow-hidden p-6 shadow-[0_32px_80px_rgba(0,0,0,0.25)] sm:p-8"
+    >
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-400/50 to-transparent" />
 
-        {/* header */}
-        <div className="mb-8 flex items-start justify-between gap-4">
-          <div className="space-y-3">
-            <div
-              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.22em]"
-              style={{ border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
-            >
-              <Sparkles className="h-3.5 w-3.5" style={{ color: "var(--accent-fg)" }} />
-              Trusted access
+      <div className="mb-8">
+        <h2 className="text-3xl font-semibold tracking-[-0.04em]" style={{ color: "var(--fg)" }}>
+          Welcome back
+        </h2>
+        <p className="mt-2 text-sm leading-6" style={{ color: "var(--fg-muted)" }}>
+          Sign in to continue your capability journey.
+        </p>
+      </div>
+
+      <form className="space-y-6" onSubmit={onSubmit}>
+        <div className="space-y-4">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium" style={{ color: "var(--fg)" }}>Email</span>
+            <span className="relative block">
+              <Mail
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: "var(--fg-muted)" }}
+              />
+              <input
+                type="email"
+                required
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="login-input pl-11"
+              />
+            </span>
+          </label>
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label htmlFor="login-password" className="text-sm font-medium" style={{ color: "var(--fg)" }}>
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => void forgotPassword()}
+                className="text-xs transition hover:opacity-80"
+                style={{ color: "var(--fg-muted)" }}
+              >
+                Forgot password?
+              </button>
             </div>
-            <div>
-              <h2 className="text-3xl font-semibold tracking-[-0.04em]" style={{ color: "var(--fg)" }}>
-                Welcome Back
-              </h2>
-              <p className="mt-2 text-sm leading-6" style={{ color: "var(--fg-muted)" }}>
-                Sign in to continue your capability journey.
-              </p>
-            </div>
-          </div>
-          <div
-            className="hidden rounded-2xl px-4 py-3 text-right sm:block"
-            style={{ border: "1px solid var(--border)", background: "var(--bg-subtle)" }}
-          >
-            <p className="text-[11px] uppercase tracking-[0.24em]" style={{ color: "var(--fg-subtle)" }}>Active Role</p>
-            <p className="mt-1 text-sm font-medium" style={{ color: "var(--fg)" }}>{selectedRole.name}</p>
+            <span className="relative block">
+              <LockKeyhole
+                className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2"
+                style={{ color: "var(--fg-muted)" }}
+              />
+              <input
+                id="login-password"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="login-input pl-11"
+              />
+            </span>
           </div>
         </div>
 
-        <form className="space-y-6" onSubmit={handleSubmit}>
-          {/* fields */}
-          <div className="space-y-4">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium" style={{ color: "var(--fg)" }}>Email</span>
-              <span className="relative block">
-                <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--fg-muted)" }} />
-                <input
-                  aria-label="Email"
-                  type="email"
-                  required
-                  value={form.email}
-                  onChange={(e) => set("email", e.target.value)}
-                  placeholder="you@company.com"
-                  className="login-input pl-11"
-                />
-              </span>
-            </label>
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium" style={{ color: "var(--fg)" }}>Password</span>
-              <span className="relative block">
-                <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: "var(--fg-muted)" }} />
-                <input
-                  aria-label="Password"
-                  type="password"
-                  required
-                  value={form.password}
-                  onChange={(e) => set("password", e.target.value)}
-                  placeholder="Enter your password"
-                  className="login-input pl-11"
-                />
-              </span>
-            </label>
+        <div className="space-y-4">
+          <motion.button
+            type="submit"
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.993 }}
+            disabled={busy}
+            className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-5 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(99,102,241,0.35)] transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+            <ArrowRight className="h-4 w-4" />
+          </motion.button>
+
+          <div className="flex items-center gap-4">
+            <div className="h-px flex-1 divider-line" />
+            <span className="text-xs uppercase tracking-[0.28em]" style={{ color: "var(--fg-subtle)" }}>or</span>
+            <div className="h-px flex-1 divider-line" />
           </div>
 
-          {/* remember / forgot */}
-          <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <label className="inline-flex items-center gap-3" style={{ color: "var(--fg-muted)" }}>
-              <input
-                aria-label="Remember me"
-                type="checkbox"
-                checked={form.rememberMe}
-                onChange={(e) => set("rememberMe", e.target.checked)}
-                className="h-4 w-4 rounded accent-indigo-500"
-              />
-              Remember Me
-            </label>
-            <button
-              type="button"
-              className="text-left text-sm transition hover:opacity-80 sm:text-right"
-              style={{ color: "var(--fg)" }}
+          <motion.button
+            type="button"
+            onClick={() => void run(signInWithGoogle)}
+            disabled={busy}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.993 }}
+            className="flex h-14 w-full items-center justify-center rounded-2xl text-sm font-medium transition"
+            style={{ border: "1px solid var(--border-md)", background: "var(--bg-subtle)", color: "var(--fg)" }}
+          >
+            Continue with Google
+          </motion.button>
+        </div>
+
+        <DemoAccounts
+          onSelect={(demoEmail, demoPassword) => {
+            setEmail(demoEmail);
+            setPassword(demoPassword);
+            setFeedback(null);
+          }}
+        />
+
+        <AnimatePresence mode="wait">
+          {feedback && (
+            <motion.p
+              key={feedback.text}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              role={feedback.tone === "error" ? "alert" : "status"}
+              className="rounded-2xl px-4 py-3 text-sm"
+              style={
+                feedback.tone === "error"
+                  ? { border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.08)", color: "#f87171" }
+                  : { border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--fg-muted)" }
+              }
             >
-              Forgot Password
-            </button>
-          </div>
-
-          {/* actions */}
-          <div className="space-y-4">
-            <motion.button
-              type="submit"
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.993 }}
-              disabled={isSubmitting}
-              className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-indigo-500 px-5 text-sm font-semibold text-white shadow-[0_16px_40px_rgba(99,102,241,0.35)] transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {isSubmitting ? "Signing In..." : "Login"}
-              <ArrowRight className="h-4 w-4" />
-            </motion.button>
-
-            <div className="flex items-center gap-4">
-              <div className="h-px flex-1 divider-line" />
-              <span className="text-xs uppercase tracking-[0.28em]" style={{ color: "var(--fg-subtle)" }}>OR</span>
-              <div className="h-px flex-1 divider-line" />
-            </div>
-
-            <motion.button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={isSubmitting}
-              whileHover={{ y: -2 }}
-              whileTap={{ scale: 0.993 }}
-              className="flex h-14 w-full items-center justify-center rounded-2xl text-sm font-medium transition"
-              style={{
-                border: "1px solid var(--border-md)",
-                background: "var(--bg-subtle)",
-                color: "var(--fg)",
-              }}
-            >
-              Continue with Google
-            </motion.button>
-          </div>
-
-          {/* role selector */}
-          <RoleSelector roles={roles} selectedRoleId={selectedRoleId} onSelect={setSelectedRoleId} />
-
-          {/* demo accounts */}
-          <DemoAccounts onSelectAccount={handleAutofill} />
-
-          {/* feedback */}
-          <AnimatePresence mode="wait">
-            {feedback && (
-              <motion.p
-                key={feedback}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                aria-live="polite"
-                className="rounded-2xl px-4 py-3 text-sm"
-                style={
-                  feedback.toLowerCase().includes("invalid")
-                    ? { border: "1px solid rgba(239,68,68,0.25)", background: "rgba(239,68,68,0.08)", color: "#f87171" }
-                    : { border: "1px solid rgba(34,197,94,0.2)", background: "rgba(34,197,94,0.08)", color: "#4ade80" }
-                }
-              >
-                {feedback}
-              </motion.p>
-            )}
-          </AnimatePresence>
-
-          {/* footer */}
-          <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-            <p style={{ color: "var(--fg-subtle)" }}>Need help?</p>
-            <button type="button" className="text-left transition hover:opacity-80 sm:text-right" style={{ color: "var(--fg-muted)" }}>
-              Contact Administrator
-            </button>
-          </div>
-        </form>
-      </motion.div>
-    </div>
+              {feedback.text}
+            </motion.p>
+          )}
+        </AnimatePresence>
+      </form>
+    </motion.div>
   );
-
 }
-

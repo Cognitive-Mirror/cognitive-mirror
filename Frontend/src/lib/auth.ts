@@ -1,132 +1,32 @@
-export type RoleId = "admin" | "manager" | "learner";
+/**
+ * Roles and where each one lands after sign-in.
+ *
+ * The role itself is never chosen on the client: it comes from the backend's
+ * `users` table via GET /auth/me. This file only maps it to routes.
+ */
 
-export type RoleConfig = {
-  id: RoleId;
-  name: string;
-  description: string;
-  redirect: `/${RoleId}`;
+export type RoleId = "learner" | "manager" | "admin";
+
+export const ROLE_HOME: Record<RoleId, string> = {
+  learner: "/learner",
+  manager: "/manager",
+  admin: "/admin",
 };
 
-type LoginRequest = {
-  email: string;
-  password: string;
-  roleId: RoleId;
-  rememberMe: boolean;
+export const ROLE_LABEL: Record<RoleId, string> = {
+  learner: "Learner",
+  manager: "Manager",
+  admin: "Admin",
 };
 
-type DemoAccount = {
-  email: string;
-  password: string;
-  roleId: RoleId;
-  redirect: `/${RoleId}`;
-};
+type DemoAccount = { email: string; password: string; role: RoleId };
 
-type AuthResult =
-  | {
-      success: true;
-      message: string;
-      resolvedRole: RoleConfig;
-      redirect: `/${RoleId}`;
-    }
-  | {
-      success: false;
-      message: string;
-    };
-
-export const ROLES: RoleConfig[] = [
-  {
-    id: "learner",
-    name: "Learner",
-    description: "Track growth, submit evidence, and follow capability pathways.",
-    redirect: "/learner",
-  },
-  {
-    id: "manager",
-    name: "Manager",
-    description: "Review team progress, validate evidence, and guide development.",
-    redirect: "/manager",
-  },
-  {
-    id: "admin",
-    name: "Admin",
-    description: "Configure roles, manage access, and monitor platform readiness.",
-    redirect: "/admin",
-  },
+/**
+ * Demo tenant accounts, offered as autofill on the sign-in screen. They must
+ * exist in Firebase Auth; their role comes from the seeded `users` rows.
+ */
+export const DEMO_ACCOUNTS: DemoAccount[] = [
+  { email: "learner@cognitivemirror.ai", password: "Learner123!", role: "learner" },
+  { email: "manager@cognitivemirror.ai", password: "Manager123!", role: "manager" },
+  { email: "admin@cognitivemirror.ai", password: "Admin123!", role: "admin" },
 ];
-
-const DEMO_ACCOUNTS: DemoAccount[] = [
-  {
-    email: "learner@cognitivemirror.ai",
-    password: "Learner123!",
-    roleId: "learner",
-    redirect: "/learner",
-  },
-  {
-    email: "manager@cognitivemirror.ai",
-    password: "Manager123!",
-    roleId: "manager",
-    redirect: "/manager",
-  },
-  {
-    email: "admin@cognitivemirror.ai",
-    password: "Admin123!",
-    roleId: "admin",
-    redirect: "/admin",
-  },
-];
-
-export function getDemoAccounts() {
-  return DEMO_ACCOUNTS;
-}
-
-export async function mockAuthenticate({
-  email,
-  password,
-}: LoginRequest): Promise<AuthResult> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000";
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 8000);
-
-  try {
-    const response = await fetch(`${apiUrl}/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => null);
-
-      return {
-        success: false,
-        message: error?.detail ?? "Invalid username or password.",
-      };
-    }
-
-    const result: {
-      success: boolean;
-      message: string;
-      redirect: `/${RoleId}`;
-    } = await response.json();
-
-    const resolvedRole =
-      ROLES.find((role) => role.redirect === result.redirect) ?? ROLES[0];
-
-    return {
-      success: true,
-      message: result.message,
-      resolvedRole,
-      redirect: result.redirect,
-    };
-  } catch {
-    return {
-      success: false,
-      message: "Could not reach FastAPI. Make sure the backend is running on port 8000.",
-    };
-  } finally {
-    window.clearTimeout(timeoutId);
-  }
-}

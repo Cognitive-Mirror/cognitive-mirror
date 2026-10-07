@@ -1,72 +1,78 @@
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, HTTPException, Depends
+"""Cognitive Mirror API entry point.
 
-from app.schemas.auth import LoginRequest
-from app.auth import verify_token
+Sign-in happens in Firebase on the client. This service verifies the resulting
+ID token and maps it to a `users` row (app/auth.py); it never sees a password.
+"""
+
+import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+from app.auth import current_user
+from app.config import get_settings
+from app.database import dispose_engine
+from app.models import User
+from app.routers import capabilities, evidence, knowledge, learning
+
+settings = get_settings()
+logging.basicConfig(level=settings.log_level)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    yield
+    await dispose_engine()
+
 
 app = FastAPI(
     title="Cognitive Mirror",
-    description="AI-powered Capability Intelligence Platform",
+    description="Capability intelligence platform",
     version="0.1.0",
+    lifespan=lifespan,
 )
+
+for module in (evidence, capabilities, knowledge, learning):
+    app.include_router(module.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.get("/")
-def home():
-    return {"message": "Hello Cognitive Mirror"}
+class Me(BaseModel):
+    id: str
+    email: str
+    display_name: str
+    role: str
+    tenant_id: str
 
 
-@app.post("/login")
-def login(data: LoginRequest):
-
-    accounts = {
-        "admin@cognitivemirror.ai": {
-            "password": "Admin123!",
-            "redirect": "/admin",
-        },
-        "manager@cognitivemirror.ai": {
-            "password": "Manager123!",
-            "redirect": "/manager",
-        },
-        "learner@cognitivemirror.ai": {
-            "password": "Learner123!",
-            "redirect": "/learner",
-        },
-    }
-
-    email = data.email.lower().strip()
-
-    if email in accounts:
-        account = accounts[email]
-
-        if account["password"] == data.password:
-            return {
-                "success": True,
-                "message": "FastAPI validated the password.",
-                "redirect": account["redirect"],
-            }
-
-    raise HTTPException(
-        status_code=401,
-        detail="Invalid username or password.",
-    )
-
-
-@app.get("/auth/me")
-def get_me(decoded_token: dict = Depends(verify_token)):
+@app.get("/health")
+def health() -> dict:
+    """Liveness probe. Reports configuration state without leaking secrets."""
     return {
-        "uid": decoded_token.get("uid") or decoded_token.get("sub"),
-        "email": decoded_token.get("email"),
-        "name": decoded_token.get("name"),
-        "picture": decoded_token.get("picture"),
-        "claims": decoded_token,
+        "status": "ok",
+        "service": "cognitive-mirror",
+        "environment": settings.environment,
+        "llm_configured": bool(settings.llm_api_key),
     }
 
+
+@app.get("/auth/me", response_model=Me)
+async def get_me(user: User = Depends(current_user)) -> Me:
+    """The signed-in user. The frontend routes by `role` from here."""
+    return Me(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        role=str(user.role),
+        tenant_id=user.tenant_id,
+    )

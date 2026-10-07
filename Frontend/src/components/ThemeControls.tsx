@@ -1,44 +1,53 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { LogOut, Moon, Sun, UserRound } from "lucide-react";
+/**
+ * Light/dark theme. The theme lives on <html data-theme>; components read it
+ * through useSyncExternalStore so the server render (always dark) and the first
+ * client render agree, and every toggle re-renders subscribers.
+ */
+
+import { useEffect, useSyncExternalStore } from "react";
+import { Moon, Sun } from "lucide-react";
+
+type Theme = "light" | "dark";
 
 const STORAGE_KEY = "cognitive-mirror-theme";
+const listeners = new Set<() => void>();
 
-function getInitialTheme(): "light" | "dark" {
-  if (typeof window === "undefined") return "dark";
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function currentTheme(): Theme {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+
+function applyTheme(theme: Theme) {
+  document.documentElement.dataset.theme = theme;
+  listeners.forEach((notify) => notify());
+}
+
+function preferredTheme(): Theme {
   const saved = window.localStorage.getItem(STORAGE_KEY);
   if (saved === "light" || saved === "dark") return saved;
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    const theme = getInitialTheme();
-    document.documentElement.dataset.theme = theme;
-  }, []);
+  useEffect(() => applyTheme(preferredTheme()), []);
   return <>{children}</>;
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<"light" | "dark">("dark");
-
-  // Sync with DOM after hydration
-  useEffect(() => {
-    const current = (document.documentElement.dataset.theme as "light" | "dark") ?? "dark";
-    setTheme(current);
-  }, []);
+  const theme = useSyncExternalStore(subscribe, currentTheme, () => "dark" as Theme);
+  const isLight = theme === "light";
 
   const toggle = () => {
-    const next = theme === "dark" ? "light" : "dark";
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
+    const next: Theme = isLight ? "dark" : "light";
     window.localStorage.setItem(STORAGE_KEY, next);
+    applyTheme(next);
   };
-
-  const isLight = theme === "light";
 
   return (
     <button
@@ -56,51 +65,5 @@ export function ThemeToggle() {
       </span>
       <Moon className="h-3.5 w-3.5" />
     </button>
-  );
-}
-
-export function ProfileMenu({ role }: { role: string }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative">
-      <Link
-        href="/profile"
-        className="profile-avatar-wrapper"
-        aria-label="Go to profile dashboard"
-        onClick={(event) => {
-          event.preventDefault();
-          setOpen((value) => !value);
-        }}
-      >
-        <Image src="/avatar.svg" alt="Profile" width={38} height={38} className="profile-avatar" />
-        <span className="profile-tooltip">Alex Morgan – {role} account</span>
-      </Link>
-      {open && (
-        <div role="menu" className="profile-menu">
-          <div className="profile-menu-heading">
-            <p>Alex Morgan</p>
-            <span className="capitalize">{role} account</span>
-          </div>
-          <button role="menuitem" onClick={() => { window.location.href = "/"; }}>
-            <UserRound className="h-4 w-4" />
-            Switch Accounts
-          </button>
-          <button role="menuitem" onClick={() => { window.localStorage.removeItem(STORAGE_KEY); window.location.href = "/"; }}>
-            <LogOut className="h-4 w-4" />
-            Log Out
-          </button>
-        </div>
-      )}
-    </div>
   );
 }

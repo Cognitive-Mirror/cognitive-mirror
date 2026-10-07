@@ -1,0 +1,71 @@
+[project]
+name = "cognitive-mirror-backend"
+version = "0.1.0"
+description = "AI-powered Capability Intelligence Platform — Backend"
+requires-python = ">=3.11"
+dependencies = [
+    # --- Web Framework ---
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+
+    # --- Data Validation & Config ---
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+
+    # --- Auth ---
+    "firebase-admin>=6.5",
+    "pyjwt>=2.8",
+
+    # --- AI / LLM ---
+    "langchain-core>=0.3.0",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.3.0",              # default: any OpenAI-compatible endpoint
+    "langchain-nvidia-ai-endpoints>=0.3.0", # LLM_PROVIDER=nvidia
+
+    # --- Retrieval (ARC, vendored at Backend/hybrid_rag) ---
+    "scikit-learn>=1.4",
+
+    # --- Database ---
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "aiosqlite>=0.20",   # development default
+    "asyncpg>=0.29",     # production (PostgreSQL)
+    "greenlet>=3.0",     # required by SQLAlchemy async
+
+    # --- HTTP ---
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+eval = [
+    "deepeval>=1.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["hybrid_rag", "migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM"]
+# `from app.scoring import constants as C` reads as a namespace of tunables,
+# which is the point of keeping every constant in one module.
+ignore = ["N812"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI dependency injection is declared as a default argument by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+# Seed scripts are content: long prose strings read better unwrapped.
+"scripts/seed_*.py" = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

@@ -1,11 +1,11 @@
 {
   "name": "cognitive-mirror",
   "version": "1.0.0",
-  "description": "> AI-powered Capability Intelligence Platform",
-  "main": "index.js",
+  "description": "AI-powered Capability Intelligence Platform — dev runner for the Frontend and Backend workspaces",
+  "private": true,
   "scripts": {
     "frontend": "npm --prefix Frontend run dev",
-    "backend": "python -m uvicorn main:app --reload --app-dir Backend",
+    "backend": "python -m uvicorn main:app --app-dir Backend --port 8100 --reload --reload-dir Backend",
     "dev": "concurrently -k --names \"BACKEND,FRONTEND\" --prefix-colors \"blue,magenta\" \"npm:backend\" \"npm:frontend\""
   },
   "repository": {
@@ -21,8 +21,6 @@
   },
   "homepage": "https://github.com/Cognitive-Mirror/cognitive-mirror#readme",
   "dependencies": {
-    "concurrently": "^10.0.4",
-    "firebase": "^12.16.0",
-    "matrix-js-sdk": "^42.0.0-rc.0"
+    "concurrently": "^10.0.4"
   }
 }

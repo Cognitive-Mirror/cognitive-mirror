@@ -218,3 +218,42 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ---------------------------------------------------------------------------
+# Node / JavaScript
+# ---------------------------------------------------------------------------
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ---------------------------------------------------------------------------
+# Secrets — never commit these
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+Backend/.env
+Frontend/.env.local
+serviceAccountKey.json
+Backend/serviceAccountKey.json
+*-serviceAccount*.json
+*.pem
+*.key
+
+# Local development database
+*.db
+*.sqlite3
+cognitive_mirror.db
+
+# Editor / tooling
+.claude/
+
+# Any *.env file, not just .env — e.g. api_keys.env
+*.env
+!*.env.example

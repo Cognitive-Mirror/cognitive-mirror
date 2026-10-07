@@ -1,5 +1,5 @@
-import { CapabilityWorkspace } from "@/components/CapabilityWorkspace";
+import { TeamOverview } from "@/components/dashboard/TeamOverview";
 
-export default function ManagerPage() {
-  return <CapabilityWorkspace role="manager" />;
+export default function Page() {
+  return <TeamOverview />;
 }
