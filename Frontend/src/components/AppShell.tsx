@@ -182,10 +182,10 @@ export function PageIntro({
   actions?: React.ReactNode;
 }) {
   return (
-    <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <h1 className="display display-lg">{title}</h1>
-        <p className="lede mt-3">{text}</p>
+        <h1 className="display display-lg rise">{title}</h1>
+        <p className="lede fade-in mt-4">{text}</p>
       </div>
       {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
     </header>

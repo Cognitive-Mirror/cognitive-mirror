@@ -8,14 +8,17 @@
  * different kinds of fact and merging them is the illusion the product exists
  * to remove:
  *
- *   knows  a continuous bar, 0-100%, from assessments and e-learn checks
- *   does   five discrete level stops, filled only to the manager-validated
- *          level; stops that decayed evidence no longer supports are hollow
+ *   knows  a continuous bar, 0-100%, from assessments and e-learn checks,
+ *          ruled at each quarter
+ *   does   a five-rung level meter, filled only to the manager-validated
+ *          level; rungs that aged evidence no longer supports are hatched
  *
- * The required level is ringed on the level track. Nothing here is computed on
- * the client beyond layout: every value is the backend's.
+ * The required rung is underscored in ink. When the figure is first seen, the
+ * knows bar draws to its value and then the rungs fill one by one: reading
+ * the figure is the animation. Every value is the backend's.
  */
 
+import { CountUp, useReveal } from "@/components/viz/motion";
 import type { CapabilityState } from "@/services/api";
 
 const LEVELS = ["novice", "developing", "competent", "proficient", "expert"] as const;
@@ -33,6 +36,9 @@ const SOURCE_LABEL: Record<string, string> = {
   pre_assessment: "starting point",
   none: "",
 };
+
+/** Aged evidence: jade hatching on its soft tint. */
+const HATCH = "repeating-linear-gradient(135deg, var(--does) 0 1.5px, var(--does-soft) 1.5px 4.5px)";
 
 function levelIndex(level: string) {
   return Math.max(0, LEVELS.indexOf(level as (typeof LEVELS)[number]));
@@ -55,84 +61,99 @@ export function Mirror({
   compact?: boolean;
   animate?: boolean;
 }) {
+  const { ref, shown: revealed, reduce } = useReveal<HTMLElement>();
+  const shown = revealed || !animate;
+  const still = reduce || !animate;
   const knows = state.knowledge_mastery;
   const attained = levelIndex(state.attained_level);
   const support = levelIndex(state.current_support_level);
   const required = levelIndex(state.required_level);
   const knowsPct = knows === null ? 0 : Math.round(knows * 100);
   const source = SOURCE_LABEL[state.knowledge_source] ?? "";
+  const cols = compact ? "grid-cols-[3.25rem_1fr_3rem]" : "grid-cols-[4.5rem_1fr_7.5rem]";
 
   return (
     <figure
+      ref={ref}
       className="w-full"
       aria-label={`Knows ${knows === null ? "not measured" : `${knowsPct}%`}; validated at work: ${LEVEL_LABEL[state.attained_level]}; required ${LEVEL_LABEL[state.required_level]}.`}
     >
       {/* Knows */}
-      <div className={`grid items-end gap-x-4 ${compact ? "grid-cols-[3.25rem_1fr_3rem]" : "grid-cols-[4.5rem_1fr_7.5rem]"}`}>
-        <span className="caption pb-1">Knows</span>
-        <div className="relative h-2.5 overflow-hidden" style={{ background: "var(--surface-2)" }}>
+      <div className={`grid items-center gap-x-4 ${cols}`}>
+        <span className="caption">Knows</span>
+        <div className={`relative overflow-hidden ${compact ? "h-2.5" : "h-3"}`} style={{ background: "var(--surface-2)" }}>
           {knows !== null && (
             <div
-              className={`absolute inset-y-0 left-0 ${animate ? "grow-x" : ""}`}
-              style={{ width: `${knowsPct}%`, background: "var(--knows)" }}
+              className="absolute inset-y-0 left-0"
+              style={{
+                width: `${knowsPct}%`,
+                background: "var(--knows)",
+                transformOrigin: "left",
+                transform: shown ? "scaleX(1)" : "scaleX(0)",
+                transition: still ? "none" : "transform 0.9s cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
             />
           )}
         </div>
-        <span className="num pb-0.5 text-right">
-          <span className="ink-knows text-sm font-semibold">{knows === null ? "—" : `${knowsPct}%`}</span>
-          {!compact && source && <span className="meta block leading-3">{source}</span>}
+        <span className="text-right leading-4">
+          {knows === null ? (
+            <span className="ink-knows text-sm font-semibold">—</span>
+          ) : (
+            <CountUp value={knowsPct} suffix="%" className="ink-knows text-sm font-semibold" />
+          )}
+          {!compact && source && <span className="meta block">{source}</span>}
         </span>
       </div>
 
       {/* The mirror line */}
-      <div className={`grid gap-x-4 ${compact ? "grid-cols-[3.25rem_1fr_3rem] py-1.5" : "grid-cols-[4.5rem_1fr_7.5rem] py-2.5"}`}>
+      <div className={`grid gap-x-4 ${cols} ${compact ? "py-1.5" : "py-2.5"}`}>
         <span />
-        <div className="h-px" style={{ background: "var(--ink-3)", opacity: 0.6 }} />
+        {/* The mirror line doubles as the knows axis: ticks at each quarter. */}
+        <div className="relative h-px" style={{ background: "var(--ink-3)" }}>
+          {!compact &&
+            [25, 50, 75].map((q) => (
+              <span key={q} aria-hidden className="absolute -top-[3px] h-[7px] w-px" style={{ left: `${q}%`, background: "var(--ink-3)" }} />
+            ))}
+        </div>
         <span />
       </div>
 
       {/* Does */}
-      <div className={`grid items-start gap-x-4 ${compact ? "grid-cols-[3.25rem_1fr_3rem]" : "grid-cols-[4.5rem_1fr_7.5rem]"}`}>
-        <span className="caption pt-0.5">Does</span>
+      <div className={`grid items-start gap-x-4 ${cols}`}>
+        <span className="caption pt-px">Does</span>
         <div>
-          <div className="relative flex h-3.5 items-center justify-between">
-            {/* track joining validated stops */}
-            <div className="absolute left-[7px] right-[7px] top-1/2 h-px -translate-y-1/2" style={{ background: "var(--line-strong)" }} />
-            {attained > 0 && (
-              <div
-                className={`absolute left-[7px] top-1/2 h-[3px] -translate-y-1/2 ${animate ? "grow-x" : ""}`}
-                style={{
-                  width: `calc(${(attained / 4) * 100}% - ${(attained / 4) * 14}px)`,
-                  background: "var(--does)",
-                  animationDelay: "0.25s",
-                }}
-              />
-            )}
+          <div className="grid grid-cols-5 gap-[3px]">
             {LEVELS.map((level, i) => {
-              const validated = i <= attained && attained > 0;
-              const decayed = validated && i > support;
-              const isRequired = i === required;
+              const validated = attained > 0 && i <= attained;
+              const aged = validated && i > support;
+              const fill = validated ? (aged ? HATCH : "var(--does)") : "var(--surface-2)";
               return (
-                <span
-                  key={level}
-                  title={`${LEVEL_LABEL[level]}${isRequired ? " · required" : ""}${decayed ? " · evidence has aged" : ""}`}
-                  className="relative z-10 block h-3.5 w-3.5"
-                  style={{
-                    background: validated && !decayed ? "var(--does)" : "var(--bg)",
-                    border: validated
-                      ? `2px ${decayed ? "dashed" : "solid"} var(--does)`
-                      : "2px solid var(--line-strong)",
-                    boxShadow: isRequired ? "0 0 0 3px var(--bg), 0 0 0 4.5px var(--ink)" : undefined,
-                  }}
-                />
+                <span key={level} className="relative block">
+                  <span
+                    title={`${LEVEL_LABEL[level]}${i === required ? " · required" : ""}${aged ? " · evidence has aged" : ""}`}
+                    className={`block ${compact ? "h-2.5" : "h-3"}`}
+                    style={{
+                      background: shown ? fill : "var(--surface-2)",
+                      transition: still ? "none" : "background 0.35s ease",
+                      transitionDelay: still ? "0s" : `${0.55 + i * 0.13}s`,
+                    }}
+                  />
+                  {i === required && (
+                    <span aria-hidden className="absolute inset-x-0 -bottom-[5px] h-[2px]" style={{ background: "var(--ink)" }} />
+                  )}
+                </span>
               );
             })}
           </div>
           {!compact && <LevelAxis required={required} />}
         </div>
-        <span className="num text-right">
+        <span className="text-right leading-4">
           <span className="ink-does text-sm font-semibold">{LEVEL_LABEL[state.attained_level]}</span>
-          {!compact && <span className="meta block leading-3">confidence {state.state_confidence.toFixed(2)}</span>}
+          {!compact && (
+            <span className="meta block">
+              confidence <CountUp value={state.state_confidence} decimals={2} />
+            </span>
+          )}
         </span>
       </div>
     </figure>
@@ -140,15 +161,14 @@ export function Mirror({
 }
 
 /**
- * Axis labels for the level track. Five names cannot fit under five stops at
+ * Axis labels for the level meter. Five names cannot fit under five rungs at
  * every width, so the axis reads like a chart's: its two ends, plus the
- * required stop called out under its ring. An end label that would collide
- * with the callout is dropped; every stop still names itself on hover.
+ * required rung called out under its underscore. An end label that would
+ * collide with the callout is dropped; every rung still names itself on hover.
  */
 export function LevelAxis({ required }: { required: number }) {
-  const at = (i: number) => `calc(7px + (100% - 14px) * ${i / 4})`;
   return (
-    <div className="relative mt-2 h-4 meta leading-4">
+    <div className="relative mt-2.5 h-4 meta leading-4">
       {required > 1 && <span className="absolute left-0">Novice</span>}
       {required < 3 && <span className="absolute right-0">Expert</span>}
       <span
@@ -158,7 +178,7 @@ export function LevelAxis({ required }: { required: number }) {
             ? { left: 0 }
             : required === 4
               ? { right: 0 }
-              : { left: at(required), transform: "translateX(-50%)" }
+              : { left: `${((required + 0.5) / 5) * 100}%`, transform: "translateX(-50%)" }
         }
       >
         required
