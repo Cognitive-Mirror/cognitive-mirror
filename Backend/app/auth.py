@@ -9,6 +9,15 @@ There is a development-only path that decodes a token WITHOUT verifying its
 signature. Unsigned decoding means any attacker can mint a token claiming to be
 any user, so it is gated behind an explicit opt-in flag that Settings refuses to
 honour outside `ENVIRONMENT=development`. It is off by default.
+
+Demo personas
+-------------
+With demo mode on (development only, see Settings.demo_enabled), a request may
+carry `X-Demo-Persona-Email` instead of a token. It is honoured only for an
+active user in the demo tenant (DEMO_TENANT_ID), so it can never select a real
+person or reach a real tenant's data. The marker travels on request.state,
+which a token cannot set, so neither a verified nor a forged token can claim
+it. Without demo mode the header is ignored and the usual 401 applies.
 """
 
 from __future__ import annotations
@@ -17,7 +26,7 @@ import logging
 from pathlib import Path
 
 import firebase_admin
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from firebase_admin import auth, credentials
 from sqlalchemy import select
@@ -88,10 +97,28 @@ def _decode_unverified(token: str) -> dict:
     return claims
 
 
+DEMO_PERSONA_HEADER = "X-Demo-Persona-Email"
+
+
+def _demo_persona(request: Request) -> str | None:
+    """The persona email requested by a demo client, when demo mode allows it."""
+    raw = request.headers.get(DEMO_PERSONA_HEADER, "").strip().lower()
+    if not raw or not get_settings().demo_enabled:
+        return None
+    return raw
+
+
 async def verify_token(
+    request: Request,
     credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
     """Extract and verify the Firebase ID token from the Authorization header."""
+    persona = _demo_persona(request)
+    if persona:
+        # Resolved, and confined to the demo tenant, in current_user.
+        request.state.demo_persona = persona
+        return {}
+
     if credentials is None or not credentials.credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -138,9 +165,14 @@ DEFAULT_TENANT = "default"
 
 
 async def current_user(
+    request: Request,
     claims: dict = Depends(verify_token),
     session: AsyncSession = Depends(get_db),
 ) -> User:
+    persona = getattr(request.state, "demo_persona", None)
+    if persona:
+        return await _demo_user(session, persona)
+
     uid = claims.get("uid") or claims.get("sub")
     if not uid:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token carries no subject.")
@@ -152,6 +184,26 @@ async def current_user(
         user = await _link_or_provision(session, uid, claims)
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This account is deactivated.")
+    return user
+
+
+async def _demo_user(session: AsyncSession, email: str) -> User:
+    """A demo persona: an active user of the demo tenant, and nothing else."""
+    user = (
+        await session.execute(
+            select(User).where(
+                User.tenant_id == get_settings().demo_tenant_id,
+                User.email == email,
+                User.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Unknown demo persona. Reset the demo data, then choose a persona.",
+            headers=_UNAUTHORIZED_HEADERS,
+        )
     return user
 
 

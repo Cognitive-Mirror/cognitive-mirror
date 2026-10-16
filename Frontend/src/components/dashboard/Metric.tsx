@@ -1,24 +1,31 @@
-import type { LucideIcon } from "lucide-react";
+/**
+ * A ruled line of figures. Replaces a grid of metric tiles: the numbers read
+ * as one sentence about the state, not as four separate trophies.
+ */
 
-export function Metric({
-  label,
-  value,
-  detail,
-  icon: Icon,
+type Tone = "knows" | "does" | "pending" | "risk";
+
+export function StatLine({
+  items,
+  className = "",
 }: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: LucideIcon;
+  items: { label: string; value: string; tone?: Tone }[];
+  className?: string;
 }) {
   return (
-    <div className="rounded-2xl border t-border t-subtle p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-xs t-muted">{label}</span>
-        <Icon className="h-4 w-4 text-indigo-400" />
-      </div>
-      <p className="text-2xl font-semibold tracking-tight t-fg">{value}</p>
-      <p className="mt-1 text-xs t-subtle-fg">{detail}</p>
-    </div>
+    <dl className={`grid grid-cols-2 rule rule-b sm:grid-cols-4 ${className}`}>
+      {items.map((item, i) => (
+        <div
+          key={item.label}
+          className="py-4 pr-4 sm:pl-5 sm:first:pl-0"
+          style={i > 0 ? { borderLeft: "1px solid var(--line)" } : undefined}
+        >
+          <dt className="meta">{item.label}</dt>
+          <dd className={`num mt-1 text-[1.375rem] font-medium tracking-[-0.01em] ${item.tone ? `ink-${item.tone}` : "t-fg"}`}>
+            {item.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

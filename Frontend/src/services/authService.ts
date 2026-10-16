@@ -16,22 +16,27 @@ import {
   signOut,
 } from "firebase/auth";
 
-import { auth } from "./firebase";
+import { clearPersona } from "./demo";
+import { getFirebaseAuth, requireFirebaseAuth } from "./firebase";
 import { clearSession } from "./session";
 
 export function signInWithEmail(email: string, password: string) {
-  return signInWithEmailAndPassword(auth, email, password);
+  clearPersona();
+  return signInWithEmailAndPassword(requireFirebaseAuth(), email, password);
 }
 
 export function signInWithGoogle() {
-  return signInWithPopup(auth, new GoogleAuthProvider());
+  clearPersona();
+  return signInWithPopup(requireFirebaseAuth(), new GoogleAuthProvider());
 }
 
 export function resetPassword(email: string) {
-  return sendPasswordResetEmail(auth, email);
+  return sendPasswordResetEmail(requireFirebaseAuth(), email);
 }
 
 export async function logOut() {
+  clearPersona();
   clearSession();
-  await signOut(auth);
+  const auth = getFirebaseAuth();
+  if (auth) await signOut(auth);
 }

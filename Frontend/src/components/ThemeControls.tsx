@@ -1,9 +1,11 @@
 "use client";
 
 /**
- * Light/dark theme. The theme lives on <html data-theme>; components read it
- * through useSyncExternalStore so the server render (always dark) and the first
- * client render agree, and every toggle re-renders subscribers.
+ * Light/dark theme, following the viewer's system until they choose.
+ *
+ * The theme lives on <html data-theme>. layout.tsx sets it before first paint,
+ * so this module only keeps it in step: it follows system changes live while
+ * no choice is saved, and a click saves an explicit one.
  */
 
 import { useEffect, useSyncExternalStore } from "react";
@@ -20,7 +22,7 @@ function subscribe(listener: () => void) {
 }
 
 function currentTheme(): Theme {
-  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
 function applyTheme(theme: Theme) {
@@ -28,42 +30,50 @@ function applyTheme(theme: Theme) {
   listeners.forEach((notify) => notify());
 }
 
-function preferredTheme(): Theme {
-  const saved = window.localStorage.getItem(STORAGE_KEY);
-  if (saved === "light" || saved === "dark") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+function savedTheme(): Theme | null {
+  try {
+    const saved = window.localStorage.getItem(STORAGE_KEY);
+    return saved === "light" || saved === "dark" ? saved : null;
+  } catch {
+    return null;
+  }
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  useEffect(() => applyTheme(preferredTheme()), []);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    applyTheme(savedTheme() ?? (media.matches ? "dark" : "light"));
+    const follow = (e: MediaQueryListEvent) => {
+      if (!savedTheme()) applyTheme(e.matches ? "dark" : "light");
+    };
+    media.addEventListener("change", follow);
+    return () => media.removeEventListener("change", follow);
+  }, []);
   return <>{children}</>;
 }
 
 export function ThemeToggle() {
-  const theme = useSyncExternalStore(subscribe, currentTheme, () => "dark" as Theme);
-  const isLight = theme === "light";
+  const theme = useSyncExternalStore(subscribe, currentTheme, () => "light" as Theme);
+  const next: Theme = theme === "dark" ? "light" : "dark";
 
   const toggle = () => {
-    const next: Theme = isLight ? "dark" : "light";
-    window.localStorage.setItem(STORAGE_KEY, next);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* the choice lasts for this page only */
+    }
     applyTheme(next);
   };
 
   return (
     <button
       type="button"
-      role="switch"
-      aria-checked={isLight}
-      aria-label={`Switch to ${isLight ? "dark" : "light"} mode`}
       onClick={toggle}
-      className="theme-toggle"
-      title={`${isLight ? "Dark" : "Light"} mode`}
+      className="btn btn-icon theme-switch"
+      aria-label={`Switch to ${next} theme`}
+      title={`Switch to ${next} theme`}
     >
-      <Sun className="h-3.5 w-3.5" />
-      <span className="theme-toggle-track">
-        <span className={`theme-toggle-thumb${isLight ? " is-light" : ""}`} />
-      </span>
-      <Moon className="h-3.5 w-3.5" />
+      {theme === "dark" ? <Sun /> : <Moon />}
     </button>
   );
 }

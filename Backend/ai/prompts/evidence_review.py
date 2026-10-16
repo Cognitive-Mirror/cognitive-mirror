@@ -27,6 +27,9 @@ evidence strong, apply that clause, not your own standard.
 - If the rubric does not settle a question, say so in `concerns` rather than \
 filling the gap from general knowledge.
 - Never cite a clause that was not supplied to you.
+- Support the rating with 1-4 `evidence_quotes`: words copied EXACTLY from the \
+submission, unedited, each tied to the clause it bears on. Quotes are checked \
+against the submission and any that do not appear verbatim are discarded.
 
 CORE PRINCIPLES:
 - Capability is not knowledge. Look for demonstrated application.
@@ -54,7 +57,11 @@ peer_feedback | manager_observation | document | other",
   "recommendation": "The next action for the manager or learner",
   "requires_human_review": true,
   "reasoning": "Which clause led to which conclusion",
-  "rubric_citations": ["slugs of clauses actually used"]
+  "rubric_citations": ["slugs of clauses actually used"],
+  "evidence_quotes": [
+    {{"quote": "exact words from the submission", "rubric_citation": "slug",
+      "note": "what it shows"}}
+  ]
 }}"""
 
 EVIDENCE_REVIEW_HUMAN = """\

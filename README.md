@@ -43,6 +43,46 @@ Demo sign-in accounts (learner, manager, admin) are listed on the sign-in screen
 They must exist in Firebase Auth; on first sign-in each is linked by email to its
 seeded `users` row, which is where its role comes from.
 
+## Client demo
+
+With `ENVIRONMENT=development` (the default), demo mode is on. On boot the
+backend seeds a separate tenant, **Apex Systems Engineering** (`apex-demo`), so
+nothing here touches real data:
+
+```bash
+cd Backend && python -m alembic upgrade head && cd ..
+npm run dev                          # backend :8100 + frontend :3000, no Firebase needed
+```
+
+A floating toolbar (bottom right, every page) switches persona in one click and
+resets the demo tenant (~0.4 s). Personas and what each shows:
+
+| Persona | Shows |
+|---|---|
+| **Priya Nair** (learner) | Evidence pending with Dev. Validate it: novice → developing, confidence 0.00 → ~0.85 |
+| **Arjun Mehta** (learner) | 100% on every assessment, no workplace evidence: novice, confidence 0.00. Knowing is not doing |
+| **Elena Rostova** (learner) | Three validated items in three independent contexts: competent, confidence 0.88 (high) |
+| **Marcus Vance** (learner) | Validated competent 14 months ago, 25% on last week's post-assessment: level stands, revalidation due |
+| **Dev Malhotra** (manager) | Validation queue, team coverage, per-person audit trails |
+| **Sarah Chen** (admin) | Retrieval debugger and the approved rubric & capability matrix |
+
+Every number is the Capability State Model's own output: the seed replays each
+person's history through the production services at historical timestamps
+(`Backend/app/demo_seed.py`).
+
+**AI during a demo.** The live model is always tried first. For the canonical
+"Fill realistic sample" texts and seeded evidence only, a failed or slow (8 s)
+call falls back to a pre-computed evaluation in `Backend/ai/demo_cache.py`,
+which passes through the same quote and citation verifiers as live output. It is
+labelled *Verified AI Evaluation · pre-computed*, and stored with
+`model_name=demo-cache:golden-v1`, so the audit trail can always tell it from a
+live call. Anything typed live goes to the model or the honest fallback.
+Before a call, run the toolbar's AI check (or `GET /api/demo/ai-status?probe=true`).
+
+Endpoints: `POST /api/demo/reset`, `GET /api/demo/personas`,
+`GET /api/demo/samples`, `GET /api/demo/ai-status`. All return 404 when demo mode
+is off. `python -m app.demo_seed` (from `Backend/`) resets from the command line.
+
 ## Repository layout
 
 ```

@@ -78,12 +78,8 @@ async def resolve_required_level(
     now = now or datetime.now(UTC)
 
     if role_ref is None or program_ref is None:
-        user = (
-            await session.execute(
-                select(User).where(User.id == subject_id, User.tenant_id == tenant_id)
-            )
-        ).scalar_one_or_none()
-        if user is not None:
+        user = await session.get(User, subject_id)
+        if user is not None and user.tenant_id == tenant_id:
             role_ref = role_ref or user.role_ref
             program_ref = program_ref or user.program_ref
 

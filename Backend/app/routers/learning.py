@@ -91,6 +91,10 @@ class ItemResult(BaseModel):
     feedback: str
     explanation: str = ""
     reveal: dict | None = None
+    # Open answers: the key points the AI credited and the verbatim quotes it
+    # credited them on, each located in the answer server-side. Key point TEXT
+    # stays in `reveal`, which assessments never send.
+    ai_detail: dict | None = None
 
 
 class AttemptResult(BaseModel):
@@ -167,7 +171,7 @@ async def _attempt_result(
             .where(ItemResponse.attempt_id == attempt.id)
             .order_by(AssessmentItem.position)
         )
-    ).tuples().all()
+    ).all()
     teach = activity.kind is ActivityKind.ELEARN
     pending = sum(1 for _, r in pairs if r.scored_by is ScoredBy.PENDING)
     return AttemptResult(
@@ -193,6 +197,7 @@ async def _attempt_result(
                 feedback=resp.feedback,
                 explanation=item.explanation if teach else "",
                 reveal=_reveal(item) if teach else None,
+                ai_detail=resp.ai_detail,
             )
             for item, resp in pairs
         ],
@@ -432,7 +437,7 @@ async def review_queue(
             ai_note=resp.feedback,
             submitted_at=attempt.submitted_at,
         )
-        for resp, item, attempt, activity, learner in (await session.execute(query)).tuples()
+        for resp, item, attempt, activity, learner in (await session.execute(query)).all()
     ]
 
 

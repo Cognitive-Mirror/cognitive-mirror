@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import os
 
-for _key in ("LLM_API_KEY", "JINA_API_KEY", "COHERE_API_KEY", "OPENAI_API_KEY", "VOYAGE_API_KEY"):
+for _key in (
+    "LLM_API_KEY", "JINA_API_KEY", "COHERE_API_KEY", "OPENAI_API_KEY", "VOYAGE_API_KEY",
+    "NVIDIA_API_KEY", "GROQ_API_KEY", "GEMINI_API_KEY",
+):
     os.environ[_key] = ""
+os.environ["DEMO_INFERENCE_DELAY_SECONDS"] = "0"
 
 import pytest_asyncio  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402

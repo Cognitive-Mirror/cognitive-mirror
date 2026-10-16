@@ -35,8 +35,16 @@ class EvidenceReviewState(TypedDict, total=False):
     grounded: bool
     grounding_reason: str
 
+    # --- demo ---
+    allow_live: bool
+    """False only when seeding: never spend a model call on seed data."""
+    golden_used: bool
+    """The verified demo cache supplied the review because the model could not."""
+
     # --- outputs ---
     review: EvidenceReviewOutput | None
+    verified_quotes: list[dict]
+    """Quotes located verbatim in the content: {quote, start, end, clause, note}."""
     guardrail_notes: list[str]
     errors: list[str]
 
