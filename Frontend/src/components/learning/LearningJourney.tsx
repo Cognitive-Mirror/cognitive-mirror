@@ -18,6 +18,8 @@ import { AppShell, ErrorNote, Loading, PageIntro, describeError } from "@/compon
 import { Mirror, narrate } from "@/components/explain/Mirror";
 import { ExerciseInput, ResultLine } from "@/components/learning/Exercises";
 import { PreviewModal } from "@/components/learning/PreviewModal";
+import { Waffle } from "@/components/viz/charts";
+import { CountUp } from "@/components/viz/motion";
 import { useResource } from "@/lib/useResource";
 import {
   type ActivityDetail,
@@ -350,13 +352,20 @@ function AttemptSummary({ result, activity }: { result: AttemptResult; activity:
   return (
     <section className="mt-8 rule rule-b py-6" aria-label="Your result">
       <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+        <div className="flex items-end gap-6">
+          {result.score !== null && result.score !== undefined && (
+            <Waffle value={result.score} label="Score" />
+          )}
+          <div>
           <p className="meta">Attempt {result.attempt_number}</p>
-          <p className="display num mt-1 text-5xl ink-knows">{pct(result.score)}</p>
+          <p className="display mt-1 text-5xl ink-knows">
+            {result.score === null || result.score === undefined ? pct(result.score) : <CountUp value={Math.round(result.score * 100)} suffix="%" />}
+          </p>
           <p className="meta mt-2 num">
             {result.points_earned.toFixed(1)} of {result.points_scored.toFixed(1)} marked points
             {result.pending_items > 0 && ` · ${result.pending_items} open answer${result.pending_items > 1 ? "s" : ""} still being marked`}
           </p>
+        </div>
         </div>
         {result.pending_items > 0 && <Loader2 className="h-5 w-5 animate-spin ink-primary" />}
       </div>

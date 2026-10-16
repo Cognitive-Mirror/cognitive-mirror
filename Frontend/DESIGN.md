@@ -22,7 +22,7 @@ one thing and every mark is a measurement. Tokens live in
 | Role | Face | Use |
 |---|---|---|
 | Display | Funnel Display 500, −0.025em | `.display`, `.display-xl/lg/md/sm` |
-| UI and reading | Funnel Sans | body, `.title`, `.lede`, `.meta`, `.caption`, `.reading` |
+| UI and reading | Funnel Sans, 15px base | body, `.title`, `.lede`, `.meta`, `.caption`, `.reading` |
 | Code | Martian Mono, 85% width | `.code`: rubric clause slugs only |
 
 Display and UI are one superfamily, so headlines and interface share their
@@ -68,19 +68,42 @@ Theme follows the system until the viewer picks one. A pre-paint script sets
 `components/explain/Mirror.tsx`. The two readings sit across one hairline,
 with deliberately different encodings:
 
-- **Knows:** a continuous bar, 0–100%.
-- **Does:** five discrete square stops (Novice → Expert).
+- **Knows:** a continuous bar, 0–100%. The mirror line beneath it doubles as
+  its axis, ticked at each quarter.
+- **Does:** a five-rung level meter (Novice → Expert).
   - Filled jade up to the validated level.
-  - Dashed where the evidence has aged.
-  - The required stop is framed.
+  - Hatched where the evidence has aged.
+  - The required rung is underscored in ink.
 
-`LevelAxis` labels the ends and the required stop only. Five names cannot fit
-at every width, and every stop still names itself on hover. `MirrorMark` is
-the product mark: a blue bar reflected over a short jade one.
+`LevelAxis` labels the ends and the required rung only. Every rung still
+names itself on hover. `MirrorMark` is the product mark.
 
-## Motion
+## Infographics (`components/viz/charts.tsx`)
 
-- Bars grow in once (`.grow-x`, 0.9s ease-out).
-- The sign-in Mirror plays the mechanism once: knowing fills, then a
-  validation fills the level.
-- Everything respects `prefers-reduced-motion`.
+- **LevelUnits:** a unit chart, one square per person in their level's
+  column. Jade = at required, grey = below, dashed coral = revalidation due.
+  The meets-required zone is shaded. Used for team and tenant coverage
+  instead of a stacked bar, because levels are ordinal and every person
+  counts.
+- **Waffle:** a 10 × 10 grid for an assessment score. It fills bottom-up,
+  column by column.
+- **StrengthMeter:** the four evidence strengths, filled to the AI's reading.
+  Neutral ink, because the reading is not validated.
+- **ConfidenceTrack:** confidence before → after on 0–1, with the 0.40
+  ceiling marked. Jade going up, coral going down.
+- **ScoreBar:** inline bars for retrieval and AI confidence scores.
+- **StatLine:** figures count up. "X of N" stats draw N unit squares.
+
+## Motion (`components/viz/motion.tsx`)
+
+- **The idea:** reading the figure is the animation. Each chart plays once,
+  when it first scrolls into view (`useReveal`, IntersectionObserver).
+  - A bar draws to its value.
+  - The rungs fill one by one.
+  - A number counts to itself (`CountUp`).
+  - The squares drop into their columns.
+- **The page headline** is the page's one entrance. It rises out of a mask
+  (`.rise`), and the lede fades in after it.
+- **Easing** is `cubic-bezier(0.16, 1, 0.3, 1)`, with routine changes at
+  150–400 ms. Nothing loops and nothing bounces.
+- **With `prefers-reduced-motion`,** final states render immediately.

@@ -16,6 +16,7 @@ import { BookOpen, Briefcase, Clock, History, Loader2, LockOpen, ShieldCheck, Sp
 import type { LucideIcon } from "lucide-react";
 
 import { LEVEL_LABEL } from "@/components/explain/Mirror";
+import { ConfidenceTrack } from "@/components/viz/charts";
 import { getAuditTrail, type AuditEvent, type AuditTrail as Trail } from "@/services/api";
 
 const KIND: Record<AuditEvent["kind"], { icon: LucideIcon; color: string }> = {
@@ -175,6 +176,9 @@ function AuditDrawer({
                         <dt className="meta">Confidence</dt>
                         <dd className={`num ${e.confidence_unlocked ? "font-medium ink-does" : "t-fg"}`}>
                           {fmt(e.previous_confidence)} → {fmt(e.new_confidence)}
+                        </dd>
+                        <dd className="mt-1">
+                          <ConfidenceTrack from={e.previous_confidence} to={e.new_confidence} ceiling={trail?.unvalidated_ceiling ?? 0.4} />
                         </dd>
                       </div>
                     </dl>

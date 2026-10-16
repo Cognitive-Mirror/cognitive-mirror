@@ -15,6 +15,8 @@ import { AppShell, ErrorNote, Loading, PageIntro } from "@/components/AppShell";
 import { StatLine } from "@/components/dashboard/Metric";
 import { AuditTrailButton } from "@/components/explain/AuditTrail";
 import { LEVEL_LABEL, LEVELS, Mirror } from "@/components/explain/Mirror";
+import { type Unit, LevelUnits } from "@/components/viz/charts";
+import { CountUp } from "@/components/viz/motion";
 import { useResource } from "@/lib/useResource";
 import {
   type CapabilityState,
@@ -52,37 +54,37 @@ export function TeamOverview() {
         <>
           <StatLine
             items={[
-              { label: "Direct reports", value: String(reports) },
-              { label: "Waiting on you", value: String(awaiting), tone: awaiting > 0 ? "pending" : undefined },
-              { label: "Critical gaps", value: String(sum((t) => t.critical_gap_count)), tone: sum((t) => t.critical_gap_count) > 0 ? "risk" : undefined },
-              { label: "Revalidation due", value: String(sum((t) => t.revalidation_due_count)), tone: sum((t) => t.revalidation_due_count) > 0 ? "risk" : undefined },
+              { label: "Direct reports", value: reports },
+              { label: "Waiting on you", value: awaiting, of: reports, tone: awaiting > 0 ? "pending" : undefined },
+              { label: "Critical gaps", value: sum((t) => t.critical_gap_count), tone: sum((t) => t.critical_gap_count) > 0 ? "risk" : undefined },
+              { label: "Revalidation due", value: sum((t) => t.revalidation_due_count), tone: sum((t) => t.revalidation_due_count) > 0 ? "risk" : undefined },
             ]}
           />
 
-          <section className="mt-12" aria-labelledby="coverage">
+          <section className="mt-14" aria-labelledby="coverage">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 id="coverage" className="display display-sm">Coverage by capability</h2>
                 <p className="meta mt-1">Validated coverage: at or above required, manager-validated, and above the confidence floor.</p>
               </div>
-              <LevelLegend />
+              <UnitLegend />
             </div>
             {reports === 0 ? (
               <p className="mt-6 text-sm t-muted">No direct reports are assigned to you yet.</p>
             ) : (
-              <div className="mt-4 overflow-x-auto">
+              <div className="mt-6 overflow-x-auto">
                 <table className="table min-w-[640px]">
                   <thead>
                     <tr>
                       <th>Capability</th>
-                      <th className="w-[45%]">Distribution of validated level</th>
+                      <th className="w-[45%]">One square per person, by validated level</th>
                       <th className="text-right">Validated coverage</th>
                       <th>Median</th>
                       <th>Flags</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {team.map((item) => <CoverageRow key={item.capability_id} item={item} />)}
+                    {team.map((item) => <CoverageRow key={item.capability_id} item={item} members={members} />)}
                   </tbody>
                 </table>
               </div>
@@ -97,7 +99,7 @@ export function TeamOverview() {
             <section className="mt-14" aria-labelledby="people">
               <h2 id="people" className="display display-sm">People</h2>
               <p className="meta mt-1">Open an audit trail to see every state change and what caused it.</p>
-              <div className="rows mt-4 rule">
+              <div className="rows mt-6 rule">
                 {members.map((m) => <MemberRow key={m.id} member={m} />)}
               </div>
             </section>
@@ -108,44 +110,54 @@ export function TeamOverview() {
   );
 }
 
-function LevelLegend() {
+function UnitLegend() {
   return (
-    <div className="flex flex-wrap items-center gap-3" aria-hidden>
-      {LEVELS.map((l, i) => (
-        <span key={l} className="meta flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5" style={{ background: `var(--lvl-${i})` }} />
-          {LEVEL_LABEL[l]}
-        </span>
-      ))}
+    <div className="meta flex flex-wrap items-center gap-x-4 gap-y-1" aria-hidden>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: "var(--does)" }} /> At required</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: "var(--ink-3)" }} /> Below required</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ border: "1.5px dashed var(--risk)" }} /> Revalidation due</span>
+      <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5" style={{ background: "color-mix(in srgb, var(--does) 7%, transparent)", border: "1px dashed var(--does)" }} /> Required zone</span>
     </div>
   );
 }
 
-function CoverageRow({ item }: { item: TeamAggregate }) {
-  const total = item.subject_count || 1;
+function coverageUnits(item: TeamAggregate, members: TeamMember[]): { units: Unit[]; required: number | null } {
+  const states = members
+    .map((m) => ({ m, s: m.states.find((x) => x.capability_id === item.capability_id) }))
+    .filter((x): x is { m: TeamMember; s: CapabilityState } => !!x.s);
+  if (states.length === 0) {
+    // No per-person states: draw the aggregate distribution, one square per person.
+    const units = LEVELS.flatMap((level, i) =>
+      Array.from({ length: item.distribution[level] ?? 0 }, (_, k) => ({ key: `${level}-${k}`, label: "Learner", level: i, tone: "neutral" as const })),
+    );
+    return { units, required: null };
+  }
+  const counts = new Map<number, number>();
+  for (const { s } of states) {
+    const r = LEVELS.indexOf(s.required_level as (typeof LEVELS)[number]);
+    counts.set(r, (counts.get(r) ?? 0) + 1);
+  }
+  const required = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const units = states.map(({ m, s }) => ({
+    key: m.id,
+    label: m.display_name,
+    level: Math.max(0, LEVELS.indexOf(s.attained_level as (typeof LEVELS)[number])),
+    tone: s.needs_revalidation ? ("aged" as const) : s.gap <= 0 ? ("met" as const) : ("below" as const),
+  }));
+  return { units, required };
+}
+
+function CoverageRow({ item, members }: { item: TeamAggregate; members: TeamMember[] }) {
+  const { units, required } = coverageUnits(item, members);
   return (
     <tr>
       <td className="font-medium">{item.capability_name}</td>
       <td>
-        <div className="flex h-3 overflow-hidden" style={{ background: "var(--surface-2)" }}>
-          {LEVELS.map((level, i) => {
-            const count = item.distribution[level] ?? 0;
-            return count > 0 ? (
-              <div
-                key={level}
-                title={`${LEVEL_LABEL[level]}: ${count}`}
-                style={{ width: `${(count / total) * 100}%`, background: `var(--lvl-${i})`, borderRight: "1px solid var(--bg)" }}
-              />
-            ) : null;
-          })}
-        </div>
-        <p className="meta mt-1.5">
-          {LEVELS.filter((l) => (item.distribution[l] ?? 0) > 0)
-            .map((l) => `${item.distribution[l]} ${LEVEL_LABEL[l].toLowerCase()}`)
-            .join(" · ")}
-        </p>
+        <LevelUnits units={units} required={required} legend={false} />
       </td>
-      <td className="num text-right text-[0.9375rem] font-medium">{Math.round(item.validated_coverage * 100)}%</td>
+      <td className="text-right">
+        <CountUp value={Math.round(item.validated_coverage * 100)} suffix="%" className="text-[1.125rem] font-medium" />
+      </td>
       <td>{item.median_level ? LEVEL_LABEL[item.median_level] : "n/a"}</td>
       <td>
         <div className="flex flex-wrap gap-1">

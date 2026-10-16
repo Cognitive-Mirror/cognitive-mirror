@@ -16,7 +16,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { ChevronDown, GraduationCap, Library, ShieldCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { LevelAxis, MirrorMark } from "@/components/explain/Mirror";
+import { Mirror, MirrorMark } from "@/components/explain/Mirror";
 import { DEMO_ACCOUNTS, ROLE_HOME, ROLE_LABEL, type RoleId } from "@/lib/auth";
 import { resetPassword, signInWithEmail, signInWithGoogle } from "@/services/authService";
 import { type DemoPersona, getPersonas, setPersona } from "@/services/demo";
@@ -25,7 +25,6 @@ import { clearSession, loadSession } from "@/services/session";
 /* ── The argument ─────────────────────────────────────────────────── */
 
 const EASE = [0.16, 1, 0.3, 1] as const;
-const STOPS = ["Novice", "Developing", "Competent", "Proficient", "Expert"];
 
 /** An illustrative Mirror that plays the mechanism once: knowing fills, doing waits for a manager. */
 function MirrorStory() {
@@ -38,73 +37,32 @@ function MirrorStory() {
   }, [reduce]);
 
   return (
-    <figure className="w-full max-w-[30rem]">
+    <figure
+      className="w-full max-w-[30rem]"
+      // The field is the page here: tracks and rules take its tones.
+      style={{ "--surface-2": "var(--field-line)", "--bg": "var(--field)" } as React.CSSProperties}
+    >
       <figcaption className="meta mb-5 flex items-center justify-between">
         <span>Stakeholder influence · one learner</span>
         <span>Illustrative</span>
       </figcaption>
 
-      <div className="grid grid-cols-[4.5rem_1fr_4rem] items-center gap-x-4">
-        <span className="caption">Knows</span>
-        <div className="h-3 overflow-hidden" style={{ background: "var(--field-line)" }}>
-          <motion.div
-            className="h-full"
-            style={{ background: "var(--knows)", transformOrigin: "left" }}
-            initial={reduce ? false : { scaleX: 0 }}
-            animate={{ scaleX: 0.88 }}
-            transition={{ duration: 1.4, ease: EASE, delay: 0.3 }}
-          />
-        </div>
-        <span className="num ink-knows text-right text-sm font-semibold">88%</span>
-      </div>
-
-      <div className="grid grid-cols-[4.5rem_1fr_4rem] gap-x-4 py-3">
-        <span />
-        <div className="h-px" style={{ background: "var(--ink-3)" }} />
-        <span />
-      </div>
-
-      <div className="grid grid-cols-[4.5rem_1fr_4rem] items-start gap-x-4">
-        <span className="caption pt-0.5">Does</span>
-        <div>
-          <div className="relative flex h-4 items-center justify-between">
-            <div className="absolute left-2 right-2 top-1/2 h-px -translate-y-1/2" style={{ background: "var(--line-strong)" }} />
-            <motion.div
-              className="absolute left-2 top-1/2 h-[3px] -translate-y-1/2"
-              style={{ background: "var(--does)", transformOrigin: "left", width: "calc(25% - 4px)" }}
-              initial={false}
-              animate={{ scaleX: validated ? 1 : 0 }}
-              transition={{ duration: 0.8, ease: EASE }}
-            />
-            {STOPS.map((s, i) => {
-              const on = validated && i <= 1;
-              return (
-                <span
-                  key={s}
-                  className="relative z-10 block h-4 w-4"
-                  style={{
-                    border: "2px solid",
-                    background: on ? "var(--does)" : "var(--bg)",
-                    borderColor: on ? "var(--does)" : "var(--line-strong)",
-                    transition: "background-color .4s ease, border-color .4s ease",
-                    transitionDelay: on ? `${0.35 + i * 0.15}s` : "0s",
-                    boxShadow: i === 3 ? "0 0 0 3px var(--bg), 0 0 0 4.5px var(--ink)" : undefined,
-                  }}
-                />
-              );
-            })}
-          </div>
-          <LevelAxis required={3} />
-        </div>
-        <span className="num ink-does pt-0.5 text-right text-sm font-semibold">
-          {validated ? "0.85" : "0.00"}
-        </span>
-      </div>
+      <Mirror
+        state={{
+          knowledge_mastery: 0.88,
+          knowledge_source: "knowledge_checks",
+          attained_level: validated ? "developing" : "novice",
+          current_support_level: validated ? "developing" : "novice",
+          required_level: "proficient",
+          state_confidence: validated ? 0.85 : 0,
+        }}
+      />
 
       <motion.p
         className="meta mt-6"
-        initial={false}
-        animate={{ opacity: 1 }}
+        initial={reduce ? false : { opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: EASE }}
         key={validated ? "after" : "before"}
       >
         {validated
@@ -130,7 +88,7 @@ export function BrandSection() {
       </div>
 
       <div className="max-w-[36rem]">
-        <h1 className="display display-xl">
+        <h1 className="display display-xl rise">
           Knowing <em>isn&rsquo;t</em> doing.
         </h1>
         <p className="lede mt-6 text-[1.0625rem]">

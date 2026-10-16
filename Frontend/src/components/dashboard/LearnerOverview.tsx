@@ -51,7 +51,7 @@ export function LearnerOverview() {
       {data && (
         <>
           <header className="max-w-[46rem]">
-            <h1 className="display display-lg">{story?.headline ?? "Nothing measured yet."}</h1>
+            <h1 className="display display-lg rise">{story?.headline ?? "Nothing measured yet."}</h1>
             <p className="lede mt-4">
               {focus && <strong className="font-medium t-fg">{focus.capability_name}. </strong>}
               {story?.detail ?? "Start the learning journey, then apply it at work."}
@@ -69,14 +69,14 @@ export function LearnerOverview() {
           <StatLine
             className="mt-10"
             items={[
-              { label: "Capabilities", value: String(states.length) },
-              { label: "At required level", value: `${atOrAbove} of ${states.length}` },
-              { label: "Awaiting your manager", value: `${pending.toFixed(1)} pts`, tone: pending > 0 ? "pending" : undefined },
-              { label: "Revalidation due", value: String(revalidation), tone: revalidation > 0 ? "risk" : undefined },
+              { label: "Capabilities", value: states.length },
+              { label: "At required level", value: atOrAbove, of: states.length, tone: "does" },
+              { label: "Awaiting your manager", value: pending, decimals: 1, suffix: "pts", tone: pending > 0 ? "pending" : undefined },
+              { label: "Revalidation due", value: revalidation, tone: revalidation > 0 ? "risk" : undefined },
             ]}
           />
 
-          <section className="mt-10" aria-labelledby="caps">
+          <section className="mt-14" aria-labelledby="caps">
             <h2 id="caps" className="display display-sm">Every capability, both readings</h2>
             <p className="meta mt-1">
               Blue is what you know. Green is what your manager has validated at work. Only green moves your level.
@@ -84,7 +84,7 @@ export function LearnerOverview() {
             {states.length === 0 ? (
               <p className="mt-6 text-sm t-muted">No capabilities are configured yet.</p>
             ) : (
-              <div className="rows mt-4 rule">
+              <div className="rows mt-6 rule">
                 {states.map((s) => <CapabilityRow key={s.capability_id} state={s} />)}
               </div>
             )}
@@ -105,15 +105,15 @@ function CapabilityRow({ state: s }: { state: CapabilityState }) {
   const story = narrate(s);
   const active = s.status !== "not_started" || s.knowledge_mastery !== null;
   return (
-    <article className="grid gap-6 py-7 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:gap-12">
+    <article className="grid gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:gap-14">
       <div>
-        <h3 className="title text-[1.0625rem]">{s.capability_name}</h3>
-        <p className="meta mt-1" title={s.required_level_provenance}>
+        <h3 className="display display-sm">{s.capability_name}</h3>
+        <p className="meta mt-1.5" title={s.required_level_provenance}>
           Required: {LEVEL_LABEL[s.required_level]} · set by {s.required_level_source.replace(/_/g, " ")}
         </p>
-        <p className="mt-3 text-sm leading-6 t-fg">{story.headline}</p>
-        <p className="mt-1 text-sm leading-6 t-muted">{s.recommended_next_action}</p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p className="mt-4 font-medium leading-6 t-fg">{story.headline}</p>
+        <p className="mt-1 leading-6 t-muted">{s.recommended_next_action}</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           {s.provisional_points > 0 && (
             <span className="tag tag-pending">{s.provisional_points.toFixed(1)} pts awaiting validation</span>
           )}
