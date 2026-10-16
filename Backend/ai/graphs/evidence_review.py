@@ -28,7 +28,7 @@ import re
 
 from langgraph.graph import END, StateGraph
 
-from ai.demo_cache import CACHE_METHOD, CACHE_MODEL_NAME, lookup_evidence
+from ai.demo_cache import CACHE_METHOD, CACHE_MODEL_NAME, cache_applies, lookup_evidence
 from ai.prompt_registry.registry import get_prompt_registry
 from ai.schemas.evidence_review import EvidenceReviewOutput, EvidenceStrength
 from ai.state.evidence_state import EvidenceReviewState
@@ -133,7 +133,11 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
     entry = get_prompt_registry().get("evidence_review")
     rubric = state.get("rubric_text") or ""
     settings = get_settings()
-    golden = lookup_evidence(state.get("content", "")) if settings.demo_enabled else None
+    golden = (
+        lookup_evidence(state.get("content", ""))
+        if cache_applies(state.get("tenant_id"))
+        else None
+    )
 
     if golden is not None and not state.get("allow_live", True):
         return _golden_state(state, golden, entry)

@@ -273,7 +273,7 @@ async def _load_pairs(
                 .where(ItemResponse.attempt_id == attempt_id)
                 .order_by(AssessmentItem.position)
             )
-        ).tuples().all()
+        ).all()
     )
 
 
@@ -300,12 +300,15 @@ async def score_pending_responses(
         if resp.scored_by is not ScoredBy.PENDING or item.item_type is not ItemType.FREE_RESPONSE:
             continue
         key = item.answer_key or {}
-        outcome = assess_free_response(
+        # Synchronous model call: keep it off the event loop.
+        outcome = await asyncio.to_thread(
+            assess_free_response,
             question=item.prompt,
             key_points=list(key.get("key_points", [])),
             model_answer=key.get("model_answer", ""),
             answer=(resp.response or {}).get("text", ""),
             allow_live=allow_live,
+            tenant_id=attempt.tenant_id,
         )
         if outcome.cached and allow_live:
             # Same pacing as the live call the cache is standing in for.

@@ -9,8 +9,9 @@ evidence - this module holds a pre-computed evaluation.
 
 What keeps it honest
 --------------------
-* It is only consulted when demo mode is on (development only), and only for
-  inputs that match a canonical sample exactly (after normalisation). Anything
+* It is only consulted when demo mode is on (development only), only inside
+  the demo tenant, and only for inputs that match a canonical sample exactly
+  (after normalisation). Anything
   a presenter types themselves goes to the live model or the normal fallback.
 * The live model is always tried first. The cache is the fallback.
 * A cached evaluation is NOT trusted. It is fed through the same server-side
@@ -836,6 +837,14 @@ _FREE_BY_TEXT = {
 }
 EVIDENCE_BY_KEY = {e.key: e for e in EVIDENCE}
 FREE_BY_KEY = {f.key: f for f in FREE_RESPONSES}
+
+
+def cache_applies(tenant_id: str | None) -> bool:
+    """The cache serves the demo tenant in demo mode, and nothing else."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    return settings.demo_enabled and tenant_id == settings.demo_tenant_id
 
 
 def lookup_evidence(content: str) -> GoldenEvidence | None:

@@ -93,7 +93,11 @@ async def run_ai_review(
     )
 
     graph = get_evidence_review_graph()
-    state = graph.invoke(
+    # The graph is synchronous and may wait on a model for the full timeout.
+    # Run it on a worker thread so one slow review never stalls every other
+    # request (the presenter toolbar included). It touches no session state.
+    state = await asyncio.to_thread(
+        graph.invoke,
         {
             "tenant_id": evidence.tenant_id,
             "evidence_id": evidence.id,
@@ -109,7 +113,7 @@ async def run_ai_review(
             "grounded": grounding.available,
             "grounding_reason": grounding.reason,
             "allow_live": allow_live,
-        }
+        },
     )
     if state.get("golden_used") and allow_live:
         # The cached evaluation stands in for a live call that failed; keep the

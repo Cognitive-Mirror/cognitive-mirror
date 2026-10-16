@@ -171,7 +171,7 @@ async def _attempt_result(
             .where(ItemResponse.attempt_id == attempt.id)
             .order_by(AssessmentItem.position)
         )
-    ).tuples().all()
+    ).all()
     teach = activity.kind is ActivityKind.ELEARN
     pending = sum(1 for _, r in pairs if r.scored_by is ScoredBy.PENDING)
     return AttemptResult(
@@ -437,7 +437,7 @@ async def review_queue(
             ai_note=resp.feedback,
             submitted_at=attempt.submitted_at,
         )
-        for resp, item, attempt, activity, learner in (await session.execute(query)).tuples()
+        for resp, item, attempt, activity, learner in (await session.execute(query)).all()
     ]
 
 

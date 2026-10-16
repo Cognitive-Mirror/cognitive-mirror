@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-from ai.demo_cache import CACHE_MODEL_NAME, lookup_free_response
+from ai.demo_cache import CACHE_MODEL_NAME, cache_applies, lookup_free_response
 from ai.prompt_registry.registry import get_prompt_registry
 from ai.schemas.free_response import FreeResponseAssessment
 from ai.utils.quotes import locate_quote
@@ -160,6 +160,7 @@ def assess_free_response(
     model_answer: str,
     answer: str,
     allow_live: bool = True,
+    tenant_id: str | None = None,
 ) -> FreeResponseOutcome:
     if not key_points:
         return FreeResponseOutcome(
@@ -173,7 +174,7 @@ def assess_free_response(
 
     entry = get_prompt_registry().get("free_response")
     settings = get_settings()
-    golden = lookup_free_response(question, answer) if settings.demo_enabled else None
+    golden = lookup_free_response(question, answer) if cache_applies(tenant_id) else None
 
     def from_cache() -> FreeResponseOutcome:
         return _outcome_from(

@@ -490,3 +490,112 @@ async def test_personas_samples_and_ai_status(demo):
     status = (await demo.get("/api/demo/ai-status?probe=true")).json()
     assert status["key_configured"] is False
     assert status["probe"]["ok"] is False and status["probe"]["error_kind"] == "missing_key"
+
+
+# --- Resilience: a slow or refusing model must not stall the demo -------------------
+
+
+class APITimeoutError(Exception):  # noqa: N818 - mirrors openai's class name
+    """Stands in for openai.APITimeoutError; matched by class name."""
+
+
+def test_structured_call_does_not_retry_an_endpoint_that_timed_out():
+    from ai.utils.structured import invoke_structured
+
+    calls = []
+
+    class Slow:
+        def with_structured_output(self, schema):
+            return self
+
+        def invoke(self, _):
+            calls.append(1)
+            raise APITimeoutError("timed out")
+
+    result = invoke_structured(Slow(), "prompt", EvidenceReviewOutput)
+    assert not result.ok and len(calls) == 1  # one ceiling, not two
+
+
+def test_structured_call_still_falls_back_when_tool_calling_is_unsupported():
+    from ai.utils.structured import invoke_structured
+
+    body = EVIDENCE_BY_KEY["si-sample-strong"].review
+
+    class NoTools:
+        def with_structured_output(self, schema):
+            raise NotImplementedError("no tool calling")
+
+        def invoke(self, _):
+            import json
+
+            return type("R", (), {"content": "Here you go:\n" + json.dumps(body)})()
+
+    result = invoke_structured(NoTools(), "prompt", EvidenceReviewOutput)
+    assert result.ok and result.method == "json_extracted"
+
+
+@pytest.mark.asyncio
+async def test_a_slow_model_call_does_not_block_other_requests(demo, monkeypatch):
+    import asyncio
+    import time
+
+    class SlowLLM:
+        model = "slow"
+
+        def with_structured_output(self, schema):
+            return self
+
+        def invoke(self, _):
+            time.sleep(0.8)  # a synchronous provider SDK waiting on the network
+            return EvidenceReviewOutput(**EVIDENCE_BY_KEY["si-sample-strong"].review)
+
+    monkeypatch.setattr("ai.utils.llm_factory.create_llm", lambda **_: SlowLLM())
+    sample = EVIDENCE_BY_KEY["si-sample-strong"]
+    caps = (await demo.get("/capabilities", headers=as_(ARJUN))).json()
+    si = next(c for c in caps if c["slug"] == sample.capability_slug)
+
+    done: dict[str, float] = {}
+
+    async def submit():
+        await demo.post("/evidence", headers=as_(ARJUN), json={
+            "capability_id": si["id"], "evidence_type": "workplace_application",
+            "title": sample.title, "content": sample.content,
+        })
+        done["submit"] = time.perf_counter()
+
+    async def health():
+        await asyncio.sleep(0.2)  # arrive while the model is "thinking"
+        await demo.get("/health")
+        done["health"] = time.perf_counter()
+
+    started = time.perf_counter()
+    await asyncio.gather(submit(), health())
+    # Unblocked, /health answers ~0.2s in. A blocked loop holds it until the
+    # 0.8s model call returns.
+    assert done["health"] - started < 0.6
+    assert done["submit"] - started >= 0.8
+
+
+@pytest.mark.asyncio
+async def test_the_cache_never_serves_a_real_tenant(api, db):
+    """Same canonical text, default tenant: the honest fallback, not the cache."""
+    async with db() as session:
+        session.add(Capability(id="cap-si-real", tenant_id=TENANT, slug=SI_SLUG,
+                               name="Stakeholder influence",
+                               capability_class=CapabilityClass.INTERPERSONAL))
+        session.add(make_user("real-learner"))
+        await session.commit()
+    api.uid = "real-learner"
+    sample = EVIDENCE_BY_KEY["si-sample-strong"]
+    review = (await api.post("/evidence", json={
+        "capability_id": "cap-si-real", "evidence_type": "workplace_application",
+        "title": sample.title, "content": sample.content,
+    })).json()["review"]
+    assert review["provenance"] == "fallback"
+
+    from ai.services.free_response_scoring import assess_free_response
+
+    golden = FREE_BY_KEY["post-open-strong"]
+    outcome = assess_free_response(question=golden.question, key_points=POST_OPEN_KEY_POINTS,
+                                   model_answer="", answer=golden.answer, tenant_id=TENANT)
+    assert outcome.provenance == "none" and outcome.credit is None

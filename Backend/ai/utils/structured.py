@@ -91,6 +91,20 @@ def _content_of(response: Any) -> str:
     return getattr(response, "content", None) or str(response or "")
 
 
+# Failures where a second call to the same endpoint cannot help: it would only
+# wait out another full timeout, or be refused again. Matched by class name so
+# this module needs no provider SDK imports (openai.APITimeoutError,
+# httpx.ReadTimeout, openai.AuthenticationError, ...).
+_TERMINAL_ERRORS = ("timeout", "authentication", "permissiondenied", "unauthorized")
+
+
+def _is_terminal(exc: Exception) -> bool:
+    names = [c.__name__.lower() for c in type(exc).__mro__]
+    return isinstance(exc, TimeoutError) or any(
+        marker in name for name in names for marker in _TERMINAL_ERRORS
+    )
+
+
 def invoke_structured(llm: Any, prompt_value: Any, schema: type[T]) -> StructuredResult:
     """Invoke `llm` and return an instance of `schema`.
 
@@ -106,6 +120,9 @@ def invoke_structured(llm: Any, prompt_value: Any, schema: type[T]) -> Structure
         if isinstance(value, dict):
             return StructuredResult(value=schema(**value), method="native")
     except Exception as exc:
+        if _is_terminal(exc):
+            logger.warning("Model call failed (%s); not retrying.", type(exc).__name__)
+            return StructuredResult(value=None, method="failed", error=type(exc).__name__)
         logger.info("Native structured output unavailable (%s); extracting JSON.", exc)
 
     # --- 2. Raw call, then extract and validate ---

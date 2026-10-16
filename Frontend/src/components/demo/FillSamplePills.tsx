@@ -11,12 +11,18 @@
 import { useEffect, useState } from "react";
 import { Wand2 } from "lucide-react";
 
-import { loadSamples, type Samples } from "@/services/demo";
+import { activePersona, loadSamples, type Samples } from "@/services/demo";
 
+/**
+ * Presenter samples, only while acting as a demo persona. A real signed-in
+ * user never sees them: the verified cache serves the demo tenant alone, so a
+ * sample submitted anywhere else would get no cached evaluation.
+ */
 export function useDemoSamples(): Samples | null {
   const [samples, setSamples] = useState<Samples | null>(null);
   useEffect(() => {
     let live = true;
+    if (!activePersona()) return;
     void loadSamples().then((s) => {
       if (live) setSamples(s);
     });

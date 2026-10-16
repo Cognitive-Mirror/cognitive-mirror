@@ -204,6 +204,7 @@ export function LearningJourneyPage() {
 // --- Activity player -----------------------------------------------------------
 
 const POLL_MS = 4000;
+const FIRST_POLL_MS = 1500; // a cached or fast evaluation lands well inside this
 const POLL_LIMIT = 30; // two minutes; the free model endpoint can be slow
 
 export function ActivityPlayerPage({ activityId }: { activityId: string }) {
@@ -230,7 +231,7 @@ export function ActivityPlayerPage({ activityId }: { activityId: string }) {
       } catch {
         /* keep the last good result; the next poll may succeed */
       }
-    }, POLL_MS);
+    }, polls.current === 0 ? FIRST_POLL_MS : POLL_MS);
     return () => clearTimeout(t);
   }, [result]);
 
