@@ -16,6 +16,7 @@ AI never moves attained_level. Only a ManagerValidation can (Update Rule 1).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import UTC, datetime
@@ -24,6 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.graphs.evidence_review import get_evidence_review_graph
+from app.config import get_settings
 from app.models import (
     Capability,
     CapabilityStateEvent,
@@ -64,6 +66,9 @@ async def run_ai_review(
     session: AsyncSession,
     evidence: Evidence,
     capability: Capability,
+    *,
+    allow_live: bool = True,
+    now: datetime | None = None,
 ) -> EvidenceReview:
     """Ground the review in approved rubric, run the graph, persist the output.
 
@@ -74,6 +79,9 @@ async def run_ai_review(
     Advisory only. The row records the prompt version, the model, how structured
     output was obtained, and every rubric clause cited, so the judgement can be
     audited and re-derived later (thesis 22, 23).
+
+    `allow_live=False` is for seeding: no model call is made, and only a
+    verified demo-cache entry or the deterministic fallback can review.
     """
     grounding = await ground_evidence_review(
         session,
@@ -100,8 +108,13 @@ async def run_ai_review(
             "rubric_slugs": grounding.citation_slugs,
             "grounded": grounding.available,
             "grounding_reason": grounding.reason,
+            "allow_live": allow_live,
         }
     )
+    if state.get("golden_used") and allow_live:
+        # The cached evaluation stands in for a live call that failed; keep the
+        # interaction's pacing the same as a real review would have.
+        await asyncio.sleep(get_settings().demo_inference_delay_seconds)
 
     output = state["review"]
     concerns = list(output.concerns) + list(state.get("guardrail_notes", []))
@@ -110,6 +123,23 @@ async def run_ai_review(
     trace["grounding_available"] = grounding.available
     trace["grounding_degraded"] = grounding.degraded
     trace["passages_supplied"] = grounding.citation_slugs
+    # Per-clause retrieval detail, so a citation in the UI can show how it was
+    # found: fetched by key as a grading anchor, or retrieved with this score.
+    trace["passage_detail"] = {
+        p.slug: {
+            "score": round(p.score, 4),
+            "anchor": p.anchor,
+            "via_graph": p.via_graph,
+            "kind": p.kind,
+            "level": p.level,
+            "revision": p.revision,
+        }
+        for p in grounding.passages
+    }
+    if state.get("golden_used"):
+        trace["golden_cache"] = True
+    if state.get("errors"):
+        trace["model_errors"] = [str(e)[:300] for e in state["errors"]]
 
     row = EvidenceReview(
         tenant_id=evidence.tenant_id,
@@ -126,6 +156,7 @@ async def run_ai_review(
         grounded=bool(output.grounded),
         rubric_citations=",".join(output.rubric_citations or []),
         retrieval_trace=json.dumps(trace, default=str)[:12000],
+        verified_quotes=json.dumps(state.get("verified_quotes") or []),
         prompt_name=state.get("prompt_name", ""),
         prompt_version=state.get("prompt_version", ""),
         structured_method=state.get("structured_method", ""),
@@ -134,6 +165,8 @@ async def run_ai_review(
             else state.get("model_name", "")
         ),
     )
+    if now is not None:
+        row.created_at = row.updated_at = now
     session.add(row)
     await session.flush()
     return row
@@ -216,18 +249,23 @@ async def recompute_capability_state(
     actor_id: str | None,
     reason: str,
     evidence_id: str | None = None,
+    now: datetime | None = None,
 ) -> CapabilityStateRecord:
     """Recompute and persist capability state, writing an audit event.
 
     The scoring engine is a pure function of the evidence history, so this can
     be re-run at any time - after a validation, on a schedule to apply decay,
     or to replay a recalibration (CSM section 11).
+
+    `now` defaults to the present. Passing an earlier instant replays the
+    transition as it would have happened then, which is how the demo seed builds
+    a genuine history rather than writing final state directly.
     """
-    capability = (
-        await session.execute(
-            select(Capability).where(Capability.id == capability_id)
-        )
-    ).scalar_one()
+    now = now or datetime.now(UTC)
+    # session.get answers from the identity map when the row is already loaded.
+    capability = await session.get(Capability, capability_id)
+    if capability is None:
+        raise LookupError(f"Capability {capability_id} not found.")
 
     record = (
         await session.execute(
@@ -258,7 +296,7 @@ async def recompute_capability_state(
     score = score_capability(
         items,
         capability_class=capability.capability_class,
-        now=datetime.now(UTC),
+        now=now,
         previous_attained=previous_level,
         knowledge_mastery=knowledge.mastery,
     )
@@ -274,6 +312,7 @@ async def recompute_capability_state(
         tenant_id=tenant_id,
         capability_id=capability_id,
         subject_id=learner_id,
+        now=now,
     )
 
     if record is None:
@@ -342,6 +381,7 @@ async def recompute_capability_state(
             evidence_id=evidence_id,
             reason=reason or "state recomputed",
             scoring_model_version=score.scoring_model_version,
+            occurred_at=now,
         )
     )
     await session.flush()
@@ -404,11 +444,13 @@ async def record_manager_validation(
     observed_in_work: bool | None,
     applied_independently: bool | None,
     feedback: str,
+    now: datetime | None = None,
 ) -> tuple[ManagerValidation, CapabilityStateRecord]:
     """Record the manager decision and recompute state.
 
     This is the only path that can move attained_level (Update Rule 1).
     """
+    now = now or datetime.now(UTC)
     ai_review = (
         await session.execute(
             select(EvidenceReview).where(EvidenceReview.evidence_id == evidence.id)
@@ -428,8 +470,9 @@ async def record_manager_validation(
         applied_independently=applied_independently,
         feedback=feedback,
         overrode_ai=overrode,
-        decided_at=datetime.now(UTC),
+        decided_at=now,
     )
+    validation.created_at = validation.updated_at = now
     session.add(validation)
 
     if decision in _VALIDATING_DECISIONS:
@@ -459,6 +502,7 @@ async def record_manager_validation(
         actor_id=manager_id,
         reason=reason,
         evidence_id=evidence.id,
+        now=now,
     )
     if decision in _VALIDATING_DECISIONS:
         record.last_validated_at = validation.decided_at

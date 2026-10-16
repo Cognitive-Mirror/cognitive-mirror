@@ -14,6 +14,7 @@ is the only serialiser for items, and it builds from an allowlist.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import random
@@ -25,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ai.services.evidence_intelligence import recompute_capability_state
 from ai.services.free_response_scoring import assess_free_response
+from app.config import get_settings
 from app.models import (
     ActivityAttempt,
     AssessmentItem,
@@ -157,9 +159,13 @@ async def submit_attempt(
     learner_id: str,
     activity: LearningActivity,
     responses: dict[str, dict],
+    now: datetime | None = None,
 ) -> SubmissionResult:
-    """Score a complete submission. Unanswered items score zero."""
-    if not is_available(activity):
+    """Score a complete submission. Unanswered items score zero.
+
+    `now` replays a submission at an earlier instant (demo seed only).
+    """
+    if not is_available(activity, now):
         raise LearningError("This activity is not available yet.", 403)
 
     used = await attempts_used(
@@ -186,7 +192,7 @@ async def submit_attempt(
     if unknown:
         raise LearningError("Responses reference items outside this activity.", 422)
 
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     attempt = ActivityAttempt(
         tenant_id=tenant_id,
         activity_id=activity.id,
@@ -195,6 +201,8 @@ async def submit_attempt(
         attempt_number=used + 1,
         submitted_at=now,
         scoring_version=ITEM_SCORING_VERSION,
+        created_at=now,
+        updated_at=now,
     )
     session.add(attempt)
     await session.flush()
@@ -225,7 +233,7 @@ async def submit_attempt(
     pending = [r.id for i, r in pairs if r.scored_by is ScoredBy.PENDING]
     finalize_totals(attempt, pairs)
 
-    await _recompute(session, attempt, activity, actor_id=learner_id)
+    await _recompute(session, attempt, activity, actor_id=learner_id, now=now)
     return SubmissionResult(attempt=attempt, pairs=pairs, pending_response_ids=pending)
 
 
@@ -235,6 +243,7 @@ async def _recompute(
     activity: LearningActivity,
     *,
     actor_id: str,
+    now: datetime | None = None,
 ) -> None:
     score = "pending" if attempt.score is None else f"{attempt.score:.0%}"
     await recompute_capability_state(
@@ -249,6 +258,7 @@ async def _recompute(
             f"{attempt.attempt_number} scored {score}. Knowledge signal only; "
             "attained level unaffected (ADR-003)."
         ),
+        now=now,
     )
 
 
@@ -267,7 +277,13 @@ async def _load_pairs(
     )
 
 
-async def score_pending_responses(session: AsyncSession, attempt_id: str) -> int:
+async def score_pending_responses(
+    session: AsyncSession,
+    attempt_id: str,
+    *,
+    allow_live: bool = True,
+    now: datetime | None = None,
+) -> int:
     """AI-score every pending free response on an attempt. Returns how many scored.
 
     Runs after the HTTP response has gone back. Responses the AI cannot settle
@@ -289,8 +305,13 @@ async def score_pending_responses(session: AsyncSession, attempt_id: str) -> int
             key_points=list(key.get("key_points", [])),
             model_answer=key.get("model_answer", ""),
             answer=(resp.response or {}).get("text", ""),
+            allow_live=allow_live,
         )
+        if outcome.cached and allow_live:
+            # Same pacing as the live call the cache is standing in for.
+            await asyncio.sleep(get_settings().demo_inference_delay_seconds)
         resp.feedback = outcome.feedback
+        resp.ai_detail = outcome.detail((resp.response or {}).get("text", ""))
         resp.model_name = outcome.model_name
         resp.prompt_version = outcome.prompt_version
         resp.ai_confidence = outcome.confidence
@@ -302,7 +323,7 @@ async def score_pending_responses(session: AsyncSession, attempt_id: str) -> int
     finalize_totals(attempt, pairs)
     await session.flush()
     if scored:
-        await _recompute(session, attempt, activity, actor_id="system")
+        await _recompute(session, attempt, activity, actor_id="system", now=now)
     return scored
 
 

@@ -10,9 +10,9 @@
  * than only by a database query.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpen, CircleAlert, Loader2, ShieldCheck, X } from "lucide-react";
-import { getKnowledgeItem, type KnowledgeItem } from "@/services/api";
+import { type CitationDetail, getKnowledgeItem, type KnowledgeItem } from "@/services/api";
 
 /** Reads a clause slug: CAP-DS.RUBRIC.STRONG -> "Data storytelling · rubric · strong". */
 function describeSlug(slug: string): string {
@@ -63,18 +63,47 @@ export function GroundingBadge({
   );
 }
 
-export function RubricCitation({ slug }: { slug: string }) {
+// Clause text never changes within a revision; fetch each slug once per page.
+const clauseCache = new Map<string, Promise<KnowledgeItem>>();
+
+function fetchClause(slug: string): Promise<KnowledgeItem> {
+  let hit = clauseCache.get(slug);
+  if (!hit) {
+    hit = getKnowledgeItem(slug).catch((err) => {
+      clauseCache.delete(slug);
+      throw err;
+    });
+    clauseCache.set(slug, hit);
+  }
+  return hit;
+}
+
+function retrievalLine(detail?: CitationDetail): string | null {
+  if (!detail) return null;
+  if (detail.anchor) return "Grading anchor · fetched by key, never left to retrieval";
+  const parts = [
+    detail.score !== null ? `retrieval score ${detail.score.toFixed(3)}` : null,
+    detail.via_graph ? "added by graph expansion" : "hybrid BM25 + vector match",
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
+
+export function RubricCitation({ slug, detail }: { slug: string; detail?: CitationDetail }) {
   const [open, setOpen] = useState(false);
+  const [peek, setPeek] = useState(false);
+  const [up, setUp] = useState(false);
+  const anchor = useRef<HTMLSpanElement>(null);
   const [item, setItem] = useState<KnowledgeItem | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
     if (item || loading) return;
     setLoading(true);
     setError(null);
     try {
-      setItem(await getKnowledgeItem(slug));
+      setItem(await fetchClause(slug));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load the clause.");
     } finally {
@@ -91,24 +120,88 @@ export function RubricCitation({ slug }: { slug: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  const showPeek = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      // Open upward when there is not room for the card below the chip.
+      const rect = anchor.current?.getBoundingClientRect();
+      setUp(!!rect && window.innerHeight - rect.bottom < 360);
+      setPeek(true);
+      void load();
+    }, 140);
+  };
+  const hidePeek = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setPeek(false), 160);
+  };
+  const how = retrievalLine(detail);
+
   return (
     <>
-      <button
-        onClick={() => {
-          setOpen(true);
-          void load();
-        }}
-        className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[11px] transition hover:opacity-75"
-        style={{
-          background: "rgba(99,102,241,0.1)",
-          color: "var(--accent-fg)",
-          border: "1px solid rgba(99,102,241,0.2)",
-        }}
-        title={describeSlug(slug)}
-      >
-        <BookOpen className="h-3 w-3" />
-        {slug}
-      </button>
+      <span ref={anchor} className="relative inline-flex" onMouseEnter={showPeek} onMouseLeave={hidePeek}>
+        <button
+          onClick={() => {
+            setPeek(false);
+            setOpen(true);
+            void load();
+          }}
+          onFocus={showPeek}
+          onBlur={hidePeek}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 font-mono text-[11px] transition hover:opacity-75"
+          style={{
+            background: "rgba(99,102,241,0.1)",
+            color: "var(--accent-fg)",
+            border: "1px solid rgba(99,102,241,0.2)",
+          }}
+          aria-describedby={peek ? `peek-${slug}` : undefined}
+        >
+          <BookOpen className="h-3 w-3" />
+          {slug}
+        </button>
+
+        {peek && !open && (
+          <span
+            id={`peek-${slug}`}
+            role="tooltip"
+            className={`absolute left-0 z-40 block w-80 rounded-xl p-3.5 text-left shadow-2xl ${up ? "bottom-full mb-2" : "top-full mt-2"}`}
+            style={{ background: "var(--bg-card)", border: "1px solid var(--border-md)" }}
+          >
+            <span className="block font-mono text-[10px]" style={{ color: "var(--accent-fg)" }}>
+              {slug} · approved{item ? ` · rev ${item.revision}` : ""}
+            </span>
+            <span className="mt-1 block text-sm font-semibold t-fg">
+              {item?.title ?? describeSlug(slug)}
+            </span>
+            {item && (
+              <span className="mt-1 block text-[11px] t-subtle-fg">
+                {item.capability_name ? `Capability: ${item.capability_name}` : "Shared across capabilities"}
+                {` · ${item.kind.replace(/_/g, " ")}`}
+                {item.level ? ` · ${item.level}` : ""}
+              </span>
+            )}
+            {how && (
+              <span
+                className="mt-2 block rounded-lg px-2 py-1 text-[10px] text-emerald-700 dark:text-emerald-300"
+                style={{ background: "rgba(16,185,129,0.10)" }}
+              >
+                {how}
+              </span>
+            )}
+            {loading && <span className="mt-2 block text-[11px] t-muted">Loading the approved clause…</span>}
+            {error && <span className="mt-2 block text-[11px] text-rose-500">{error}</span>}
+            {item && (
+              <span className="mt-2 block whitespace-pre-line text-[11px] leading-5 t-muted">
+                {item.body.length > 360 ? `${item.body.slice(0, 360)}…` : item.body}
+              </span>
+            )}
+            <span className="mt-2 block text-[10px] t-subtle-fg">Click for the full clause</span>
+          </span>
+        )}
+      </span>
 
       {open && (
         <div
@@ -137,10 +230,12 @@ export function RubricCitation({ slug }: { slug: string }) {
                 </h3>
                 {item && (
                   <p className="mt-1 text-[11px] t-subtle-fg">
+                    {item.capability_name ? `${item.capability_name} · ` : ""}
                     {item.kind.replace(/_/g, " ")}
                     {item.level ? ` · ${item.level}` : ""} · revision {item.revision}
                   </p>
                 )}
+                {how && <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400">{how}</p>}
               </div>
               <button
                 onClick={() => setOpen(false)}
@@ -193,13 +288,13 @@ export function RubricCitation({ slug }: { slug: string }) {
   );
 }
 
-export function CitationList({ slugs }: { slugs: string[] }) {
+export function CitationList({ slugs, details = [] }: { slugs: string[]; details?: CitationDetail[] }) {
   if (slugs.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-[11px] t-subtle-fg">Assessed against:</span>
       {slugs.map((s) => (
-        <RubricCitation key={s} slug={s} />
+        <RubricCitation key={s} slug={s} detail={details.find((d) => d.slug === s)} />
       ))}
     </div>
   );

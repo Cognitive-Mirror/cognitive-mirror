@@ -14,6 +14,21 @@ from app.schemas.evidence import EvidenceStrengthBand
 EvidenceStrength = EvidenceStrengthBand
 
 
+class EvidenceQuote(BaseModel):
+    """A passage of the submission the judgement rests on.
+
+    The guardrail locates every quote verbatim in the evidence text and drops
+    any it cannot find, so a reviewer cannot support a rating with words the
+    learner never wrote.
+    """
+
+    quote: str = Field(..., description="Exact words copied from the submission")
+    rubric_citation: str = Field(
+        default="", description="Slug of the supplied clause this passage bears on"
+    )
+    note: str = Field(default="", description="What this passage shows, in rubric terms")
+
+
 class EvidenceReviewOutput(BaseModel):
     """Complete AI output from reviewing a piece of evidence.
 
@@ -49,6 +64,13 @@ class EvidenceReviewOutput(BaseModel):
             "it used only approved sources; this field is how that question is "
             "answered from the data. A review citing nothing is ungrounded and "
             "is forced to human review."
+        ),
+    )
+    evidence_quotes: list[EvidenceQuote] = Field(
+        default_factory=list,
+        description=(
+            "Verbatim passages of the submission behind the rating. Verified "
+            "server-side; unlocatable quotes are removed and flagged."
         ),
     )
     grounded: bool = Field(

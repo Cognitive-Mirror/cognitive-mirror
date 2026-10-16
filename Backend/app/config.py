@@ -67,6 +67,34 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Provider keys picked up automatically when LLM_API_KEY is empty, in this
+    # order: NVIDIA, Groq, Gemini, OpenAI. Each is spoken to over its
+    # OpenAI-compatible endpoint (ai/config.py holds the presets).
+    nvidia_api_key: str = Field(default="")
+    groq_api_key: str = Field(default="")
+    gemini_api_key: str = Field(default="")
+
+    # ─── Demo mode ───
+    # Presenter tooling: the Apex demo tenant, one-click reset, persona switching
+    # and the verified golden AI cache. Unset means "on in development, off
+    # everywhere else"; Settings refuses DEMO_MODE=true outside development.
+    demo_mode: bool | None = Field(
+        default=None,
+        description="Enable demo tooling. Never honoured outside ENVIRONMENT=development.",
+    )
+    demo_tenant_id: str = Field(
+        default="apex-demo",
+        description="The only tenant the persona header and reset may touch.",
+    )
+    demo_llm_timeout_seconds: float = Field(
+        default=8.0, gt=0,
+        description=(
+            "Live-call ceiling for canonical demo inputs, which have a verified "
+            "cached evaluation to fall back on. Other inputs keep the full timeout."
+        ),
+    )
+    demo_inference_delay_seconds: float = Field(default=1.2, ge=0.0, le=10.0)
+
     # ─── Retrieval (ARC) ───
     # Grounding the AI in approved Impact knowledge is thesis 27 Priority 3.
     # See Docs/Decisions/ADR-002-retrieval.md for why each default is set here.
@@ -166,6 +194,25 @@ class Settings(BaseSettings):
                 "verification and would allow forged credentials."
             )
         return value
+
+    @field_validator("demo_mode")
+    @classmethod
+    def _forbid_demo_mode_outside_dev(cls, value: bool | None, info) -> bool | None:
+        """Demo mode lets a header choose the caller. Development only."""
+        environment = info.data.get("environment", "development")
+        if value and environment != "development":
+            raise ValueError(
+                f"DEMO_MODE cannot be enabled when ENVIRONMENT={environment}. "
+                "It lets a request header select the acting demo persona."
+            )
+        return value
+
+    @property
+    def demo_enabled(self) -> bool:
+        """Demo tooling is live: explicitly on, or unset in development."""
+        if self.environment != "development":
+            return False
+        return True if self.demo_mode is None else self.demo_mode
 
 
 @lru_cache

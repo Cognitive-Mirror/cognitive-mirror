@@ -14,6 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Float,
     ForeignKey,
@@ -66,6 +67,19 @@ class Evidence(Base, TenantScoped, Timestamped):
         StrEnumType(ValidationStatus), default=ValidationStatus.NOT_REQUESTED,
         nullable=False, index=True
     )
+
+    artifacts: Mapped[list | None] = mapped_column(
+        JSON, nullable=True, default=list,
+        doc=(
+            "Links to the work itself: [{url, kind, label}]. kind is derived "
+            "server-side from the URL (github | docs | ticket | video | link), "
+            "never trusted from the client."
+        ),
+    )
+
+    @property
+    def artifact_list(self) -> list[dict]:
+        return list(self.artifacts or [])
 
 
 class EvidenceReview(Base, TenantScoped, Timestamped):
@@ -121,6 +135,14 @@ class EvidenceReview(Base, TenantScoped, Timestamped):
         Text, default="",
         doc="JSON retrieval trace: query class, stages, embedder, reranker.",
     )
+    verified_quotes: Mapped[str] = mapped_column(
+        Text, default="",
+        doc=(
+            "JSON list of {quote, start, end, clause}: passages of the submission "
+            "the reviewer quoted, each located verbatim in the evidence text by "
+            "the guardrail. Quotes that could not be located were discarded."
+        ),
+    )
 
     # Auditability (thesis 22, 23).
     prompt_name: Mapped[str] = mapped_column(String(64), default="")
@@ -147,6 +169,35 @@ class EvidenceReview(Base, TenantScoped, Timestamped):
     def model_generated(self) -> bool:
         """False when the deterministic fallback produced this review."""
         return not self.model_name.startswith("fallback")
+
+    @property
+    def provenance(self) -> str:
+        """live_model | verified_cache | fallback. Shown to every reader."""
+        if self.model_name.startswith("fallback"):
+            return "fallback"
+        if self.model_name.startswith("demo-cache"):
+            return "verified_cache"
+        return "live_model"
+
+    @property
+    def quote_list(self) -> list[dict]:
+        import json
+
+        try:
+            value = json.loads(self.verified_quotes or "[]")
+        except ValueError:
+            return []
+        return value if isinstance(value, list) else []
+
+    @property
+    def trace(self) -> dict:
+        import json
+
+        try:
+            value = json.loads(self.retrieval_trace or "{}")
+        except ValueError:
+            return {}
+        return value if isinstance(value, dict) else {}
 
 
 class ManagerValidation(Base, TenantScoped, Timestamped):

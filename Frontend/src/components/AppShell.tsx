@@ -19,6 +19,7 @@ import { ROLE_HOME, ROLE_LABEL, type RoleId } from "@/lib/auth";
 import { useResource } from "@/lib/useResource";
 import { ApiError, type Me } from "@/services/api";
 import { logOut } from "@/services/authService";
+import { activePersona } from "@/services/demo";
 import { loadSession } from "@/services/session";
 
 const NAV: Record<RoleId, { label: string; href: string }[]> = {
@@ -32,7 +33,7 @@ const NAV: Record<RoleId, { label: string; href: string }[]> = {
     { label: "Evidence validation", href: "/manager/evidence" },
     { label: "Open answers", href: "/manager/answers" },
   ],
-  admin: [{ label: "Knowledge & retrieval", href: "/admin" }],
+  admin: [{ label: "Governance & retrieval", href: "/admin" }],
 };
 
 export function AppShell({
@@ -140,7 +141,10 @@ function ProfileMenu({ me }: { me: Me }) {
         <div role="menu" className="profile-menu">
           <div className="profile-menu-heading">
             <p>{name}</p>
-            <span>{ROLE_LABEL[me.role]} account</span>
+            <span>
+              {ROLE_LABEL[me.role]} account
+              {activePersona() ? " · demo persona" : ""}
+            </span>
           </div>
           <button role="menuitem" onClick={() => void signOut()}>
             <LogOut className="h-4 w-4" />

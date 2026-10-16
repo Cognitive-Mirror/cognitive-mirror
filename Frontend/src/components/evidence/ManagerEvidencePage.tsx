@@ -22,7 +22,9 @@ import {
   fieldStyle,
 } from "@/components/AppShell";
 import { GroundingBadge } from "@/components/RubricCitation";
-import { ReviewPanel } from "@/components/evidence/ReviewPanel";
+import { ReviewPanel, quoteSpans } from "@/components/evidence/ReviewPanel";
+import { ArtifactBadges, ProvenanceBadge } from "@/components/explain/Badges";
+import { HighlightedText } from "@/components/explain/HighlightedText";
 import { useResource } from "@/lib/useResource";
 import {
   type EvidenceStrength,
@@ -76,14 +78,21 @@ export function ManagerEvidencePage() {
               >
                 <p className="text-sm font-semibold t-fg">{entry.title}</p>
                 <p className="mt-1 text-xs t-subtle-fg">
-                  {entry.learner_name} · {new Date(entry.occurred_at).toLocaleDateString()}
+                  {entry.learner_name} · {entry.capability_name} ·{" "}
+                  {new Date(entry.occurred_at).toLocaleDateString()}
                 </p>
                 {entry.review && (
-                  <div className="mt-2">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <GroundingBadge
                       grounded={entry.review.grounded}
                       citationCount={entry.review.rubric_citations.length}
                     />
+                    <ProvenanceBadge provenance={entry.review.provenance} model={entry.review.model_name} />
+                  </div>
+                )}
+                {entry.artifacts.length > 0 && (
+                  <div className="mt-2">
+                    <ArtifactBadges artifacts={entry.artifacts} compact />
                   </div>
                 )}
               </button>
@@ -125,9 +134,11 @@ function Decision({ item, onDone }: { item: PendingEvidence; onDone: (message: s
         applied_independently: independent ?? undefined,
         feedback,
       });
+      const unlocked = decision === "approved" && state.state_confidence > 0.4;
       onDone(
         `Recorded. ${state.capability_name} for ${item.learner_name} is now ` +
-          `${state.attained_level} (${Math.round(state.state_confidence * 100)}% confidence).`,
+          `${state.attained_level} at ${state.state_confidence.toFixed(2)} confidence` +
+          (unlocked ? " — above the 0.40 ceiling that only manager validation can lift." : "."),
       );
     } catch (err) {
       setError(describeError(err, "Could not record the decision."));
@@ -143,10 +154,22 @@ function Decision({ item, onDone }: { item: PendingEvidence; onDone: (message: s
       </p>
       <h2 className="mt-1 text-2xl font-semibold t-fg">{item.title}</h2>
 
-      <div className="mt-4 whitespace-pre-line rounded-xl p-4 text-sm leading-6 t-fg" style={{ background: "var(--bg-subtle)" }}>
-        {item.content}
+      <p className="mt-1 text-xs t-muted">{item.capability_name}</p>
+
+      <div className="mt-4 rounded-xl p-4" style={{ background: "var(--bg-subtle)" }}>
+        {item.review ? (
+          <HighlightedText text={item.content} spans={quoteSpans(item.review)} />
+        ) : (
+          <p className="whitespace-pre-line text-sm leading-6 t-fg">{item.content}</p>
+        )}
       </div>
       {item.context && <p className="mt-2 text-xs t-muted">Context: {item.context}</p>}
+      {item.artifacts.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide t-subtle-fg">Evidence artifacts</p>
+          <ArtifactBadges artifacts={item.artifacts} />
+        </div>
+      )}
 
       {item.review && (
         <div className="mt-5">

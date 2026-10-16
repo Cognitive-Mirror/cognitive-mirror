@@ -91,6 +91,10 @@ class ItemResult(BaseModel):
     feedback: str
     explanation: str = ""
     reveal: dict | None = None
+    # Open answers: the key points the AI credited and the verbatim quotes it
+    # credited them on, each located in the answer server-side. Key point TEXT
+    # stays in `reveal`, which assessments never send.
+    ai_detail: dict | None = None
 
 
 class AttemptResult(BaseModel):
@@ -193,6 +197,7 @@ async def _attempt_result(
                 feedback=resp.feedback,
                 explanation=item.explanation if teach else "",
                 reveal=_reveal(item) if teach else None,
+                ai_detail=resp.ai_detail,
             )
             for item, resp in pairs
         ],

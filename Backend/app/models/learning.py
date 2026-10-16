@@ -185,3 +185,11 @@ class ItemResponse(Base, TenantScoped, Timestamped):
     ai_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
     model_name: Mapped[str] = mapped_column(String(120), default="")
     prompt_version: Mapped[str] = mapped_column(String(16), default="")
+    ai_detail: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True,
+        doc=(
+            "Free response only: {met_key_points, quotes: [{key_point, quote, "
+            "start, end}], provenance}. Every quote was located verbatim in the "
+            "answer; unverifiable ones were discarded before this was written."
+        ),
+    )

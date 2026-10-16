@@ -13,12 +13,23 @@ import { CircleAlert, Info, RefreshCw, ShieldCheck, Target, UsersRound } from "l
 
 import { AppShell, Card, ErrorNote, Loading, PageIntro } from "@/components/AppShell";
 import { Metric } from "@/components/dashboard/Metric";
+import { AuditTrailButton } from "@/components/explain/AuditTrail";
 import { useResource } from "@/lib/useResource";
-import { formatLevel, getTeamAggregate, type TeamAggregate } from "@/services/api";
+import {
+  type CapabilityState,
+  formatLevel,
+  getTeamAggregate,
+  getTeamMembers,
+  KNOWING_DOING_LABEL,
+  type TeamAggregate,
+  type TeamMember,
+} from "@/services/api";
+
+const loadTeam = () => Promise.all([getTeamAggregate(), getTeamMembers()]);
 
 export function TeamOverview() {
-  const { data, error, loading, reload } = useResource(getTeamAggregate);
-  const team = data ?? [];
+  const { data, error, loading, reload } = useResource(loadTeam);
+  const [team, members] = data ?? [[], []];
   const reports = team[0]?.subject_count ?? 0;
   const sum = (pick: (t: TeamAggregate) => number) => team.reduce((n, t) => n + pick(t), 0);
 
@@ -68,6 +79,19 @@ export function TeamOverview() {
               hide the distribution that decides the intervention.
             </p>
           </Card>
+
+          {members.length > 0 && (
+            <Card className="mt-5">
+              <h2 className="font-semibold t-fg">People</h2>
+              <p className="mt-1 text-xs t-subtle-fg">
+                What each person knows and what you have validated at work, side by side. Open the
+                audit trail to see every state change and what caused it.
+              </p>
+              <div className="mt-5 space-y-4">
+                {members.map((m) => <MemberRow key={m.id} member={m} />)}
+              </div>
+            </Card>
+          )}
         </>
       )}
     </AppShell>
@@ -118,6 +142,61 @@ function TeamRow({ item }: { item: TeamAggregate }) {
             </span>
           )}
         </span>
+      </div>
+    </div>
+  );
+}
+
+const BAND_TONE: Record<string, string> = {
+  high: "text-emerald-600 dark:text-emerald-400",
+  moderate: "text-indigo-600 dark:text-indigo-400",
+  low: "text-amber-600 dark:text-amber-400",
+  revalidation_due: "text-rose-600 dark:text-rose-400",
+};
+
+function MemberRow({ member }: { member: TeamMember }) {
+  const active = member.states.filter(
+    (s: CapabilityState) => s.status !== "not_started" || s.knowledge_mastery !== null,
+  );
+  return (
+    <div className="rounded-xl p-4" style={{ border: "1px solid var(--border)", background: "var(--bg-subtle)" }}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-medium t-fg">{member.display_name}</p>
+        <p className="text-[11px] t-subtle-fg">
+          {member.role_ref ?? "no role"}
+          {member.program_ref && ` · ${member.program_ref}`}
+        </p>
+      </div>
+      {active.length === 0 && <p className="mt-2 text-xs t-muted">No activity yet.</p>}
+      <div className="mt-3 space-y-2">
+        {active.map((s) => (
+          <div key={s.capability_id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="min-w-0 t-fg">
+              <strong>{s.capability_name}</strong>{" "}
+              <span className="t-muted">
+                · {formatLevel(s.attained_level)}
+                {s.needs_revalidation && ` (evidence supports ${formatLevel(s.current_support_level)})`}
+                {" · required "}
+                {formatLevel(s.required_level)}
+              </span>
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              <span className={BAND_TONE[s.confidence_band] ?? "t-muted"}>
+                conf {s.state_confidence.toFixed(2)}
+              </span>
+              {s.knowledge_mastery !== null && (
+                <span className="t-muted">knows {Math.round(s.knowledge_mastery * 100)}%</span>
+              )}
+              {s.provisional_points > 0 && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300" style={{ background: "rgba(245,158,11,.14)" }}>
+                  awaiting you
+                </span>
+              )}
+              <span className="hidden text-[10px] t-subtle-fg sm:inline">{KNOWING_DOING_LABEL[s.knowing_doing]}</span>
+              <AuditTrailButton capabilityId={s.capability_id} learnerId={member.id} label="Audit" />
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

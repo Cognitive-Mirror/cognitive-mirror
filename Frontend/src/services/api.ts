@@ -1,15 +1,15 @@
 /**
  * Typed client for the Cognitive Mirror backend.
  *
- * Every request carries the Firebase ID token. The backend derives the user,
- * tenant and role from it; nothing here sends a tenant or a role, because a
+ * Every request carries the Firebase ID token - or, in demo mode, the chosen
+ * demo persona (services/demo.ts). The backend derives the user, tenant and
+ * role from that; nothing here sends a tenant or a role, because a
  * client-supplied one would be a trivial isolation bypass.
  */
 
-import { auth } from "./firebase";
+import { activePersona, API_URL } from "./demo";
+import { getFirebaseAuth } from "./firebase";
 import type { RoleId } from "@/lib/auth";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8100";
 
 export class ApiError extends Error {
   constructor(
@@ -21,12 +21,22 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function authHeaders(): Promise<Record<string, string>> {
+  const persona = activePersona();
+  if (persona) return { "X-Demo-Persona-Email": persona };
+
+  const auth = getFirebaseAuth();
+  if (!auth) throw new ApiError("Not signed in.", 401);
   // On a page load Firebase restores the session asynchronously; reading
   // currentUser before it finishes reports "signed out" for a signed-in user.
   await auth.authStateReady();
   const user = auth.currentUser;
   if (!user) throw new ApiError("Not signed in.", 401);
+  return { Authorization: `Bearer ${await user.getIdToken()}` };
+}
+
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = await authHeaders();
 
   let response: Response;
   try {
@@ -34,7 +44,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...init,
       headers: {
         ...init.headers,
-        Authorization: `Bearer ${await user.getIdToken()}`,
+        ...headers,
         "Content-Type": "application/json",
       },
     });
@@ -44,7 +54,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(body?.detail ?? response.statusText, response.status);
+    const detail = body?.detail;
+    const message =
+      typeof detail === "string"
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d.msg ?? "Invalid input").join("; ")
+          : response.statusText;
+    throw new ApiError(message, response.status);
   }
   return response.json() as Promise<T>;
 }
@@ -130,6 +147,128 @@ export type TeamAggregate = {
 export const getMyCapabilityStates = () => request<CapabilityState[]>("/capabilities/me");
 export const getTeamAggregate = () => request<TeamAggregate[]>("/capabilities/team");
 
+export type TeamMember = {
+  id: string;
+  display_name: string;
+  email: string;
+  role_ref: string | null;
+  program_ref: string | null;
+  states: CapabilityState[];
+};
+
+export const getTeamMembers = () => request<TeamMember[]>("/capabilities/team/members");
+
+export type AuditEvent = {
+  id: string;
+  occurred_at: string;
+  kind: "evidence_submitted" | "manager_validation" | "assessment" | "decay" | "other";
+  label: string;
+  triggered_by: string;
+  actor_name: string;
+  reason: string;
+  previous_level: CapabilityLevel;
+  new_level: CapabilityLevel;
+  previous_confidence: number;
+  new_confidence: number;
+  level_changed: boolean;
+  /** Crossed the unvalidated ceiling: only manager validation can do this. */
+  confidence_unlocked: boolean;
+  scoring_model_version: string;
+  evidence: { id: string; title: string; context_ref: string; artifact_count: number } | null;
+  review: {
+    strength: string;
+    provenance: ReviewProvenance;
+    grounded: boolean;
+    citations: string[];
+    verified_quotes: number;
+  } | null;
+  validation: {
+    decision: string;
+    strength: string;
+    feedback: string;
+    overrode_ai: boolean;
+    manager_name: string;
+  } | null;
+};
+
+export type AuditTrail = {
+  subject_id: string;
+  subject_name: string;
+  capability_id: string;
+  capability_name: string;
+  unvalidated_ceiling: number;
+  events: AuditEvent[];
+};
+
+export const getAuditTrail = (capabilityId: string, learnerId?: string) =>
+  request<AuditTrail>(
+    `/capabilities/${q(capabilityId)}/audit${learnerId ? `?learner_id=${q(learnerId)}` : ""}`,
+  );
+
+export type MatrixClause = {
+  slug: string;
+  kind: string;
+  title: string;
+  level: string | null;
+  revision: number;
+};
+
+export type MatrixCapability = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  capability_class: string;
+  base_half_life_days: number;
+  linked_kpi_ids: string[];
+  clauses: MatrixClause[];
+  requirements: {
+    source: string;
+    precedence: number;
+    required_level: CapabilityLevel;
+    scope: string;
+    set_by: string;
+    rationale: string;
+    effective_from: string;
+  }[];
+  coverage: {
+    subject_count: number;
+    validated_coverage: number;
+    nominal_coverage: number;
+    median_level: CapabilityLevel | null;
+    distribution: Record<string, number>;
+    critical_gap_count: number;
+    revalidation_due_count: number;
+  };
+};
+
+export type GovernanceMatrix = {
+  approved_clause_count: number;
+  clauses_by_kind: Record<string, number>;
+  shared_clauses: MatrixClause[];
+  capabilities: MatrixCapability[];
+  resolution_order: string[];
+  unvalidated_ceiling: number;
+  coverage_confidence_floor: number;
+  scoring_model_version: string;
+};
+
+export const getGovernanceMatrix = () => request<GovernanceMatrix>("/capabilities/matrix");
+
+export type KnowledgeSummary = {
+  slug: string;
+  kind: string;
+  title: string;
+  level: string | null;
+  capability_id: string | null;
+  revision: number;
+};
+
+export const listKnowledge = (capabilityId?: string) =>
+  request<KnowledgeSummary[]>(
+    `/knowledge${capabilityId ? `?capability_id=${q(capabilityId)}` : ""}`,
+  );
+
 // --- Evidence ----------------------------------------------------------------------
 
 export type EvidenceReview = {
@@ -146,7 +285,38 @@ export type EvidenceReview = {
   /** Approved clause slugs the judgement rests on. Empty means ungrounded. */
   rubric_citations: string[];
   structured_method: string;
+  /** live_model | verified_cache | fallback. Always shown to the reader. */
+  provenance: ReviewProvenance;
+  /** Passages of the submission, located verbatim by the server. */
+  verified_quotes: VerifiedQuote[];
+  /** How each cited clause reached the reviewer. */
+  citation_details: CitationDetail[];
 };
+
+export type ReviewProvenance = "live_model" | "verified_cache" | "fallback";
+
+export type VerifiedQuote = {
+  quote: string;
+  start: number;
+  end: number;
+  /** The supplied clause this passage bears on, or "". */
+  clause: string;
+  note: string;
+};
+
+export type CitationDetail = {
+  slug: string;
+  /** Retrieval score; anchors are fetched by key and score 1.0. */
+  score: number | null;
+  anchor: boolean;
+  via_graph: boolean;
+  kind: string;
+  level: string | null;
+};
+
+export type ArtifactKind = "github" | "docs" | "ticket" | "video" | "link";
+
+export type Artifact = { url: string; kind: ArtifactKind; label: string };
 
 export type PendingEvidence = {
   evidence_id: string;
@@ -158,9 +328,34 @@ export type PendingEvidence = {
   context: string;
   context_ref: string;
   occurred_at: string;
+  submitted_at: string | null;
+  capability_name: string;
+  artifacts: Artifact[];
   review: EvidenceReview | null;
   /** False when the deterministic fallback produced the review, not a model. */
   ai_generated: boolean;
+};
+
+export type MyEvidence = {
+  evidence_id: string;
+  capability_id: string;
+  capability_name: string;
+  title: string;
+  content: string;
+  context: string;
+  context_ref: string;
+  occurred_at: string;
+  submitted_at: string;
+  validation_status: "pending" | "validated" | "rejected" | "disputed" | "not_requested";
+  artifacts: Artifact[];
+  review: EvidenceReview | null;
+  decision: {
+    decision: string;
+    strength: string;
+    feedback: string;
+    decided_at: string;
+    overrode_ai: boolean;
+  } | null;
 };
 
 export type EvidenceSubmission = {
@@ -170,6 +365,7 @@ export type EvidenceSubmission = {
   content: string;
   context: string;
   context_ref: string;
+  artifacts?: { url: string; label: string }[];
 };
 
 export type EvidenceSubmitResult = {
@@ -192,6 +388,7 @@ export type ValidationDecision = {
 export const submitEvidence = (payload: EvidenceSubmission) =>
   post<EvidenceSubmitResult>("/evidence", payload);
 export const getPendingEvidence = () => request<PendingEvidence[]>("/evidence/pending");
+export const getMyEvidence = () => request<MyEvidence[]>("/evidence/mine");
 export const validateEvidence = (evidenceId: string, payload: ValidationDecision) =>
   post<CapabilityState>(`/evidence/${q(evidenceId)}/validate`, payload);
 
@@ -207,6 +404,8 @@ export type KnowledgeItem = {
   kpi_ref: string | null;
   revision: number;
   related: string[];
+  capability_name: string | null;
+  approved_at: string | null;
 };
 
 export type IndexStatus = {
@@ -235,6 +434,42 @@ export const getKnowledgeItem = (slug: string) => request<KnowledgeItem>(`/knowl
 export const getIndexStatus = () => request<IndexStatus>("/knowledge/status");
 export const searchKnowledge = (text: string, limit = 8) =>
   request<SearchHit[]>(`/knowledge/search?q=${q(text)}&limit=${limit}`);
+
+export type ArmScore = { rank: number; score: number };
+
+export type DebugHit = {
+  slug: string;
+  kind: string;
+  title: string;
+  level: string | null;
+  capability_id: string | null;
+  fused_rank: number;
+  fused_score: number;
+  bm25: ArmScore | null;
+  dense: ArmScore | null;
+  via_graph: boolean;
+  excerpt: string;
+};
+
+export type DebugSearch = {
+  query: string;
+  query_class: string;
+  route_confidence: number;
+  weights: { bm25: number; dense: number };
+  embedder: string;
+  reranker: string;
+  reranked: boolean;
+  early_exit: boolean;
+  graph_added: string[];
+  stage_ms: Record<string, number>;
+  n_sparse: number;
+  n_dense: number;
+  corpus_docs: number;
+  hits: DebugHit[];
+};
+
+export const debugSearch = (text: string, limit = 8) =>
+  request<DebugSearch>(`/knowledge/search/debug?q=${q(text)}&limit=${limit}`);
 
 // --- Learning journey ---------------------------------------------------------------
 
@@ -310,6 +545,15 @@ export type ItemResult = {
   /** Teaching notes and the correct answer: e-learn checks only. */
   explanation: string;
   reveal: Record<string, unknown> | null;
+  /** Open answers: key points credited and the verbatim quotes behind them. */
+  ai_detail: OpenAnswerDetail | null;
+};
+
+export type OpenAnswerDetail = {
+  met_key_points: number[];
+  quotes: { key_point: number; quote: string; start: number; end: number }[];
+  provenance: "live_model" | "verified_cache" | "none";
+  answer_text: string;
 };
 
 export type AttemptResult = {

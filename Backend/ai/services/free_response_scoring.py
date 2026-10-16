@@ -11,6 +11,10 @@ marked down by arithmetic rather than trusted.
 Returns None credit - meaning "route to a human" - when no model is available,
 when the call fails, or when the model reports that the key points cannot
 settle the answer. That last case is a first-class outcome, not an error.
+
+In demo mode a canonical sample answer whose live call fails is judged from the
+verified golden cache instead. The cached judgements go through exactly the same
+quote verification and credit arithmetic as a live model's.
 """
 
 from __future__ import annotations
@@ -18,9 +22,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
+from ai.demo_cache import CACHE_MODEL_NAME, lookup_free_response
 from ai.prompt_registry.registry import get_prompt_registry
 from ai.schemas.free_response import FreeResponseAssessment
+from ai.utils.quotes import locate_quote
 from ai.utils.structured import invoke_structured
+from app.config import get_settings
 from app.scoring.items import normalise_text
 
 logger = logging.getLogger(__name__)
@@ -39,6 +46,23 @@ class FreeResponseOutcome:
     needs_human: bool = False
     concerns: list[str] = field(default_factory=list)
     met_key_points: list[int] = field(default_factory=list)
+    quotes: list[dict] = field(default_factory=list)
+    """Verified supporting quotes: {key_point, quote, start, end}."""
+    provenance: str = "live_model"
+    """live_model | verified_cache | none."""
+
+    @property
+    def cached(self) -> bool:
+        return self.provenance == "verified_cache"
+
+    def detail(self, answer: str) -> dict:
+        """What is persisted on the response for the UI to highlight."""
+        return {
+            "met_key_points": list(self.met_key_points),
+            "quotes": list(self.quotes),
+            "provenance": self.provenance,
+            "answer_text": answer,
+        }
 
 
 def _quote_verified(quote: str, answer_norm: str) -> bool:
@@ -68,28 +92,112 @@ def credit_from_judgements(
     return credit, sorted(met), rejected
 
 
+def verified_quotes(
+    assessment: FreeResponseAssessment, key_points: list[str], answer: str
+) -> list[dict]:
+    """Spans of the quotes behind each key point that `credit_from_judgements` counted."""
+    out: list[dict] = []
+    answer_norm = normalise_text(answer)
+    for j in assessment.judgements:
+        if not j.met or not 0 <= j.index < len(key_points):
+            continue
+        if not _quote_verified(j.quote, answer_norm):
+            continue
+        located = locate_quote(answer, j.quote, min_words=MIN_QUOTE_WORDS)
+        if located is not None:
+            out.append({
+                "key_point": j.index,
+                "quote": located.quote,
+                "start": located.start,
+                "end": located.end,
+            })
+    out.sort(key=lambda q: q["start"])
+    return out
+
+
+def _outcome_from(
+    assessment: FreeResponseAssessment,
+    *,
+    key_points: list[str],
+    answer: str,
+    model_name: str,
+    prompt_version: str,
+    provenance: str,
+) -> FreeResponseOutcome:
+    credit, met, rejected = credit_from_judgements(assessment, key_points, answer)
+    concerns = list(assessment.concerns) + rejected
+    quotes = verified_quotes(assessment, key_points, answer)
+
+    if assessment.key_points_insufficient:
+        return FreeResponseOutcome(
+            credit=None, needs_human=True, model_name=model_name,
+            prompt_version=prompt_version,
+            confidence=assessment.confidence,
+            feedback=(assessment.feedback or "")
+            + " A facilitator will confirm the mark, because the marking guide "
+            "did not anticipate your answer.",
+            concerns=concerns, met_key_points=met, quotes=quotes, provenance=provenance,
+        )
+
+    return FreeResponseOutcome(
+        credit=round(credit, 4),
+        feedback=assessment.feedback,
+        # Rejected quotes are evidence the judgement was unreliable.
+        confidence=max(0.0, assessment.confidence - 0.2 * len(rejected)),
+        model_name=model_name,
+        prompt_version=prompt_version,
+        concerns=concerns,
+        met_key_points=met,
+        quotes=quotes,
+        provenance=provenance,
+    )
+
+
 def assess_free_response(
-    *, question: str, key_points: list[str], model_answer: str, answer: str
+    *,
+    question: str,
+    key_points: list[str],
+    model_answer: str,
+    answer: str,
+    allow_live: bool = True,
 ) -> FreeResponseOutcome:
     if not key_points:
         return FreeResponseOutcome(
-            credit=None, needs_human=True,
+            credit=None, needs_human=True, provenance="none",
             feedback="This question has no key points to mark against; it will be reviewed.",
         )
     if len(answer.split()) < MIN_QUOTE_WORDS:
-        return FreeResponseOutcome(credit=0.0, feedback="The answer is too short to assess.")
+        return FreeResponseOutcome(
+            credit=0.0, feedback="The answer is too short to assess.", provenance="none"
+        )
 
     entry = get_prompt_registry().get("free_response")
+    settings = get_settings()
+    golden = lookup_free_response(question, answer) if settings.demo_enabled else None
+
+    def from_cache() -> FreeResponseOutcome:
+        return _outcome_from(
+            FreeResponseAssessment(**golden.assessment),
+            key_points=key_points, answer=answer, model_name=CACHE_MODEL_NAME,
+            prompt_version=entry.metadata.version, provenance="verified_cache",
+        )
+
+    if golden is not None and not allow_live:
+        return from_cache()
+
     try:
         from ai.utils.llm_factory import create_llm
 
-        llm = create_llm()
+        llm = create_llm(timeout=settings.demo_llm_timeout_seconds if golden else None)
     except Exception as exc:
         logger.info("No LLM for free-response scoring (%s).", exc)
+        if golden is not None:
+            return from_cache()
         return FreeResponseOutcome(
             credit=None, needs_human=True,
             feedback="Your answer is recorded and will be reviewed.",
             concerns=["Automatic scoring unavailable."],
+            provenance="none",
         )
 
     prompt_value = entry.template.invoke({
@@ -102,38 +210,25 @@ def assess_free_response(
     model_name = getattr(llm, "model_name", "") or getattr(llm, "model", "")
 
     if not result.ok:
+        if golden is not None:
+            return from_cache()
         return FreeResponseOutcome(
             credit=None, needs_human=True, model_name=model_name,
             prompt_version=entry.metadata.version,
             feedback="Your answer is recorded and will be reviewed.",
             concerns=[f"Automatic scoring failed: {result.error}"],
+            provenance="none",
         )
 
-    assessment: FreeResponseAssessment = result.value
-    credit, met, rejected = credit_from_judgements(assessment, key_points, answer)
-    concerns = list(assessment.concerns) + rejected
-
-    if assessment.key_points_insufficient:
-        return FreeResponseOutcome(
-            credit=None, needs_human=True, model_name=model_name,
-            prompt_version=entry.metadata.version,
-            confidence=assessment.confidence,
-            feedback=(assessment.feedback or "")
-            + " A facilitator will confirm the mark, because the marking guide "
-            "did not anticipate your answer.",
-            concerns=concerns, met_key_points=met,
-        )
-
-    return FreeResponseOutcome(
-        credit=round(credit, 4),
-        feedback=assessment.feedback,
-        # Rejected quotes are evidence the judgement was unreliable.
-        confidence=max(0.0, assessment.confidence - 0.2 * len(rejected)),
-        model_name=model_name,
-        prompt_version=entry.metadata.version,
-        concerns=concerns,
-        met_key_points=met,
+    return _outcome_from(
+        result.value, key_points=key_points, answer=answer, model_name=model_name,
+        prompt_version=entry.metadata.version, provenance="live_model",
     )
 
 
-__all__ = ["FreeResponseOutcome", "assess_free_response", "credit_from_judgements"]
+__all__ = [
+    "FreeResponseOutcome",
+    "assess_free_response",
+    "credit_from_judgements",
+    "verified_quotes",
+]

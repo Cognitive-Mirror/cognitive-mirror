@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono, Manrope } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeControls";
+import { DemoRoot } from "@/components/demo/DemoToolbar";
 
 const manrope = Manrope({
   variable: "--font-manrope",
@@ -28,7 +29,11 @@ export default function RootLayout({
       lang="en"
       className={`${manrope.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col"><ThemeProvider>{children}</ThemeProvider></body>
+      <body className="min-h-full flex flex-col">
+        <ThemeProvider>
+          <DemoRoot>{children}</DemoRoot>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

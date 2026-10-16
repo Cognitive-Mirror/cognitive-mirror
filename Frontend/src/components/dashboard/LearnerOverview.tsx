@@ -15,6 +15,7 @@ import { FileCheck2, Plus, RefreshCw, Sparkles, Target, TrendingUp } from "lucid
 
 import { AppShell, Card, ErrorNote, Loading, PageIntro } from "@/components/AppShell";
 import { Metric } from "@/components/dashboard/Metric";
+import { AuditTrailButton } from "@/components/explain/AuditTrail";
 import { useResource } from "@/lib/useResource";
 import {
   type CapabilityState,
@@ -182,6 +183,17 @@ function CapabilityRow({ state }: { state: CapabilityState }) {
           Knows <strong className="t-fg">{Math.round(state.knowledge_mastery * 100)}%</strong> ·{" "}
           {KNOWING_DOING_LABEL[state.knowing_doing]}
         </p>
+      )}
+      {state.validated_points === 0 && state.knowledge_mastery !== null && (
+        <p className="mt-1 text-[11px] t-subtle-fg">
+          Confidence is capped at 0.40 until a manager validates workplace evidence — no volume of
+          assessment can lift it.
+        </p>
+      )}
+      {(state.status !== "not_started" || state.knowledge_mastery !== null) && (
+        <div className="mt-2">
+          <AuditTrailButton capabilityId={state.capability_id} />
+        </div>
       )}
     </div>
   );

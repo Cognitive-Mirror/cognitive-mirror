@@ -36,6 +36,7 @@ import {
 } from "@/components/AppShell";
 import { ExerciseInput, ResultLine } from "@/components/learning/Exercises";
 import { KnowsDoes } from "@/components/learning/KnowsDoes";
+import { PreviewModal } from "@/components/learning/PreviewModal";
 import { useResource } from "@/lib/useResource";
 import {
   type ActivityDetail,
@@ -70,7 +71,9 @@ function stageLabel(a: ActivitySummary) {
 }
 
 function Stage({ a }: { a: ActivitySummary }) {
+  const [preview, setPreview] = useState(false);
   const { icon: Icon } = KIND_META[a.kind];
+  const previewable = !a.available && (a.kind === "peer_activity" || a.kind === "ai_practice");
   const done = a.attempts_used > 0;
   const exhausted = a.max_attempts > 0 && a.attempts_used >= a.max_attempts;
   const body = (
@@ -94,7 +97,7 @@ function Stage({ a }: { a: ActivitySummary }) {
         <p className="mt-1 text-xs leading-5 t-muted">{a.summary}</p>
         <p className="mt-2 text-[11px] t-subtle-fg">
           {!a.available
-            ? `Available from ${a.available_from ? new Date(a.available_from).toLocaleDateString() : "a later date"}`
+            ? `Available from ${a.available_from ? new Date(a.available_from).toLocaleDateString() : "a later date"}${previewable ? " · preview it now" : ""}`
             : done
               ? `First attempt ${pct(a.first_score)}${a.attempts_used > 1 ? ` · latest ${pct(a.latest_score)}` : ""}${a.latest_status === "scoring" ? " · open answers being marked" : ""}`
               : `${a.item_count} exercises · ~${a.estimated_minutes} min`}
@@ -104,6 +107,16 @@ function Stage({ a }: { a: ActivitySummary }) {
       {a.available && !exhausted && <ArrowRight className="mt-3 h-4 w-4 shrink-0 t-subtle-fg" />}
     </div>
   );
+  if (previewable) {
+    return (
+      <>
+        <button type="button" onClick={() => setPreview(true)} className="block w-full text-left hover:opacity-90">
+          {body}
+        </button>
+        {preview && <PreviewModal activity={a} onClose={() => setPreview(false)} />}
+      </>
+    );
+  }
   return a.available && !exhausted ? (
     <Link href={`/learner/learn/${a.id}`} className="block hover:opacity-90">{body}</Link>
   ) : (

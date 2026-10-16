@@ -14,6 +14,9 @@
 
 import { useState } from "react";
 import { ArrowDown, ArrowUp, Check, GripVertical, X } from "lucide-react";
+import { FillSamplePills, useDemoSamples } from "@/components/demo/FillSamplePills";
+import { ProvenanceBadge } from "@/components/explain/Badges";
+import { HighlightedText } from "@/components/explain/HighlightedText";
 import type { Choice, ItemAnswer, ItemResult, PublicItem } from "@/services/api";
 
 type Props = {
@@ -334,9 +337,40 @@ function FreeResponse({ item, value, onChange, result }: Props) {
   const words = text.trim() ? text.trim().split(/\s+/).length : 0;
   const min = item.payload.min_words ?? 0;
   const keyPoints = result?.reveal?.key_points as string[] | undefined;
+  const samples = useDemoSamples();
+  const mine = samples?.free_response.filter((s) => s.question === item.prompt) ?? [];
+  const detail = result?.ai_detail;
+  const marked = detail && detail.quotes.length > 0 ? detail : null;
   return (
     <div>
       {item.payload.guidance && <p className="mb-2 text-xs t-muted">{item.payload.guidance}</p>}
+      {!result && mine.length > 0 && (
+        <div className="mb-2">
+          <FillSamplePills
+            available={mine.map((s) => s.strength)}
+            onFill={(strength) => {
+              const s = mine.find((x) => x.strength === strength);
+              if (s) onChange({ text: s.answer });
+            }}
+          />
+        </div>
+      )}
+      {marked ? (
+        <div className="rounded-xl p-4" style={inputStyle}>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <ProvenanceBadge provenance={marked.provenance} />
+          </div>
+          <HighlightedText
+            text={marked.answer_text || text}
+            spans={marked.quotes.map((q) => ({
+              start: q.start,
+              end: q.end,
+              label: `Key point ${q.key_point + 1}`,
+              note: keyPoints?.[q.key_point] ?? "Credited against the marking guide.",
+            }))}
+          />
+        </div>
+      ) : (
       <textarea
         aria-label={item.prompt}
         rows={6}
@@ -346,6 +380,7 @@ function FreeResponse({ item, value, onChange, result }: Props) {
         className="w-full rounded-xl p-4 text-sm leading-6 outline-none focus:ring-2 focus:ring-indigo-400/30"
         style={inputStyle}
       />
+      )}
       {!result && (
         <p className={`mt-1 text-[11px] ${words < min ? "text-amber-600 dark:text-amber-300" : "t-subtle-fg"}`}>
           {words} words{min ? ` · aim for at least ${min}` : ""}

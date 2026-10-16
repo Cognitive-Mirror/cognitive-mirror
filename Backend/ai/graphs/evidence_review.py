@@ -15,6 +15,10 @@ The graph runs without an LLM configured. In that case `review` falls back to a
 deterministic heuristic and marks the output `used_fallback`, so the full
 pipeline is testable end to end before a provider key exists. Fallback output
 always requires human review and can never exceed MODERATE strength.
+
+In demo mode, a canonical demo submission whose live call fails is reviewed from
+the verified golden cache (ai/demo_cache.py) instead, and that output passes
+through `guardrails` exactly like live model output.
 """
 
 from __future__ import annotations
@@ -24,9 +28,12 @@ import re
 
 from langgraph.graph import END, StateGraph
 
+from ai.demo_cache import CACHE_METHOD, CACHE_MODEL_NAME, lookup_evidence
 from ai.prompt_registry.registry import get_prompt_registry
 from ai.schemas.evidence_review import EvidenceReviewOutput, EvidenceStrength
 from ai.state.evidence_state import EvidenceReviewState
+from ai.utils.quotes import locate_quote
+from app.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -125,12 +132,19 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
 
     entry = get_prompt_registry().get("evidence_review")
     rubric = state.get("rubric_text") or ""
+    settings = get_settings()
+    golden = lookup_evidence(state.get("content", "")) if settings.demo_enabled else None
+
+    if golden is not None and not state.get("allow_live", True):
+        return _golden_state(state, golden, entry)
 
     try:
         from ai.utils.llm_factory import create_llm
         from ai.utils.structured import invoke_structured
 
-        llm = create_llm()
+        # A canonical demo input has a verified evaluation to fall back on, so
+        # the live call gets a tight ceiling rather than the full timeout.
+        llm = create_llm(timeout=settings.demo_llm_timeout_seconds if golden else None)
         prompt_value = entry.template.invoke(
             {
                 "rubric": rubric,
@@ -161,6 +175,8 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
         logger.warning("Evidence review model call failed: %s", exc)
         errors = list(state.get("errors", []))
         errors.append(str(exc))
+        if golden is not None:
+            return {**_golden_state(state, golden, entry), "errors": errors}
         return {
             **state,
             "review": _fallback_review(state, f"model unavailable ({type(exc).__name__})"),
@@ -170,6 +186,47 @@ def review(state: EvidenceReviewState) -> EvidenceReviewState:
             "prompt_name": entry.metadata.name,
             "prompt_version": entry.metadata.version,
         }
+
+
+def _golden_state(state: EvidenceReviewState, golden, entry) -> EvidenceReviewState:
+    """Review from the verified demo cache. Guardrails still run on it."""
+    return {
+        **state,
+        "review": EvidenceReviewOutput(**golden.review),
+        "used_fallback": False,
+        "golden_used": True,
+        "structured_method": CACHE_METHOD,
+        "model_name": CACHE_MODEL_NAME,
+        "prompt_name": entry.metadata.name,
+        "prompt_version": entry.metadata.version,
+    }
+
+
+def _verify_quotes(
+    result: EvidenceReviewOutput, content: str, supplied: set[str]
+) -> tuple[list[dict], list[str]]:
+    """Locate every quote verbatim in the submission. Returns (kept, dropped)."""
+    kept: list[dict] = []
+    dropped: list[str] = []
+    seen: set[tuple[int, int]] = set()
+    for q in result.evidence_quotes or []:
+        located = locate_quote(content, q.quote)
+        if located is None:
+            dropped.append(q.quote)
+            continue
+        if located.span in seen:
+            continue
+        seen.add(located.span)
+        kept.append({
+            "quote": located.quote,
+            "start": located.start,
+            "end": located.end,
+            # A quote may only point at a clause that was actually supplied.
+            "clause": q.rubric_citation if q.rubric_citation in supplied else "",
+            "note": q.note,
+        })
+    kept.sort(key=lambda k: k["start"])
+    return kept, dropped
 
 
 def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
@@ -238,6 +295,18 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
         requires_human = True
         confidence = min(confidence, 0.4)
 
+    # 2b. Quote verification. A passage offered as support must exist,
+    #     verbatim, in what the learner wrote.
+    quotes, dropped = _verify_quotes(result, state.get("content", "") or "", supplied)
+    if dropped:
+        notes.append(
+            f"{len(dropped)} quote(s) not found verbatim in the submission were removed."
+        )
+        concerns.append(
+            "The reviewer quoted words that do not appear in the submission."
+        )
+        requires_human = True
+
     # 3. Human review is the default; it may only be waived on a confident,
     #    concern-free review (thesis 16.3, 24).
     if concerns or confidence < AUTO_REVIEW_WAIVER_CONFIDENCE:
@@ -267,8 +336,10 @@ def guardrails(state: EvidenceReviewState) -> EvidenceReviewState:
                 "requires_human_review": requires_human,
                 "rubric_citations": cited,
                 "grounded": bool(state.get("grounded")),
+                "evidence_quotes": [q for q in result.evidence_quotes if q.quote not in dropped],
             }
         ),
+        "verified_quotes": quotes,
         "guardrail_notes": notes,
     }
 

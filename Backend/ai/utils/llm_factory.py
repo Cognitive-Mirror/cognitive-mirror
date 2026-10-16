@@ -16,7 +16,7 @@ from typing import Any
 
 from langchain_core.language_models import BaseChatModel
 
-from ai.config import AIConfig, get_ai_config
+from ai.config import AIConfig, get_ai_config, sends_reasoning_switch
 
 
 def create_llm(
@@ -25,6 +25,7 @@ def create_llm(
     temperature: float | None = None,
     max_tokens: int | None = None,
     fast: bool = False,
+    timeout: float | None = None,
 ) -> BaseChatModel:
     """Create a chat model instance from configuration.
 
@@ -34,6 +35,7 @@ def create_llm(
         max_tokens: Override max_tokens (only used if config is None).
         fast: Route to the cheaper model for high-volume, low-stakes calls
             (only used if config is None).
+        timeout: Tighter per-call ceiling (only used if config is None).
 
     Returns:
         A LangChain BaseChatModel ready for invocation.
@@ -47,12 +49,14 @@ def create_llm(
             temperature=temperature,
             max_tokens=max_tokens,
             fast=fast,
+            timeout=timeout,
         )
 
     if not config.api_key:
         raise ValueError(
-            "No LLM API key configured. Set LLM_API_KEY in Backend/.env "
-            "(see Backend/.env.example). The key is server-side only and must "
+            "No LLM API key configured. Set LLM_API_KEY, or one of NVIDIA_API_KEY, "
+            "GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, in Backend/.env (see "
+            "Backend/.env.example). The key is server-side only and must "
             "never be placed in Frontend/ code."
         )
 
@@ -99,8 +103,9 @@ def _build_openai(config: AIConfig) -> BaseChatModel:
 
     kwargs: dict[str, Any] = {}
     if config.base_url:
-        # Any OpenAI-compatible server: NVIDIA NIM, vLLM, Together, local.
+        # Any OpenAI-compatible server: NVIDIA NIM, vLLM, Groq, Gemini, local.
         kwargs["base_url"] = config.base_url
+    if sends_reasoning_switch(config.base_url):
         # Hybrid reasoning models (GLM, Qwen, DeepSeek) on these servers take
         # the thinking switch through the chat template. Servers that do not
         # know the key ignore it. Reasoning text comes back in a separate
@@ -116,7 +121,7 @@ def _build_openai(config: AIConfig) -> BaseChatModel:
         temperature=config.temperature,
         max_tokens=config.max_tokens,
         timeout=config.timeout,
-        max_retries=1,
+        max_retries=config.max_retries,
         **kwargs,
     )
 

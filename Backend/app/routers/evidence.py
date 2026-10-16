@@ -23,15 +23,29 @@ from ai.services.evidence_intelligence import (
 )
 from app.auth import current_user, require_supervisor
 from app.database import get_db
-from app.models import Capability, CapabilityStateRecord, Evidence, EvidenceReview, Role, User
+from app.models import (
+    Capability,
+    CapabilityStateRecord,
+    Evidence,
+    EvidenceReview,
+    ManagerValidation,
+    Role,
+    User,
+)
 from app.schemas.capability import SignalSource, ValidationStatus
 from app.schemas.evidence import EvidenceStrengthBand, EvidenceType
 from app.schemas.review import ReviewDecision
+from app.services.urls import MAX_ARTIFACTS, ArtifactError, classify_artifacts
 
 router = APIRouter(prefix="/evidence", tags=["evidence"])
 
 
 # --- Request / response models ---------------------------------------------
+
+
+class ArtifactIn(BaseModel):
+    url: str = Field(max_length=2048)
+    label: str = Field(default="", max_length=120)
 
 
 class EvidenceSubmitRequest(BaseModel):
@@ -50,6 +64,38 @@ class EvidenceSubmitRequest(BaseModel):
     occurred_at: datetime | None = Field(
         default=None, description="When the work happened. Defaults to now."
     )
+    artifacts: list[ArtifactIn] = Field(
+        default_factory=list,
+        max_length=MAX_ARTIFACTS,
+        description="Links to the work: PR, design doc, ticket, postmortem, recording.",
+    )
+
+
+class ArtifactOut(BaseModel):
+    url: str
+    kind: str
+    label: str
+
+
+class VerifiedQuote(BaseModel):
+    """A passage of the submission, located verbatim by the server."""
+
+    quote: str
+    start: int
+    end: int
+    clause: str
+    note: str
+
+
+class CitationDetail(BaseModel):
+    """How a cited clause reached the reviewer."""
+
+    slug: str
+    score: float | None
+    anchor: bool
+    via_graph: bool
+    kind: str
+    level: str | None
 
 
 class EvidenceReviewResponse(BaseModel):
@@ -66,9 +112,15 @@ class EvidenceReviewResponse(BaseModel):
     grounded: bool
     rubric_citations: list[str]
     structured_method: str
+    # live_model | verified_cache | fallback. Never hidden from the reader.
+    provenance: str = "live_model"
+    verified_quotes: list[VerifiedQuote] = []
+    citation_details: list[CitationDetail] = []
 
     @classmethod
     def of(cls, row: EvidenceReview) -> EvidenceReviewResponse:
+        detail = row.trace.get("passage_detail") or {}
+        citations = row.citation_list
         return cls(
             summary=row.summary,
             strength=row.strength,
@@ -79,8 +131,28 @@ class EvidenceReviewResponse(BaseModel):
             model_name=row.model_name,
             prompt_version=row.prompt_version,
             grounded=row.grounded,
-            rubric_citations=row.citation_list,
+            rubric_citations=citations,
             structured_method=row.structured_method,
+            provenance=row.provenance,
+            verified_quotes=[
+                VerifiedQuote(
+                    quote=q.get("quote", ""), start=int(q.get("start", 0)),
+                    end=int(q.get("end", 0)), clause=q.get("clause", ""),
+                    note=q.get("note", ""),
+                )
+                for q in row.quote_list
+            ],
+            citation_details=[
+                CitationDetail(
+                    slug=slug,
+                    score=(detail.get(slug) or {}).get("score"),
+                    anchor=bool((detail.get(slug) or {}).get("anchor")),
+                    via_graph=bool((detail.get(slug) or {}).get("via_graph")),
+                    kind=(detail.get(slug) or {}).get("kind", ""),
+                    level=(detail.get(slug) or {}).get("level"),
+                )
+                for slug in citations
+            ],
         )
 
 
@@ -135,9 +207,38 @@ class PendingEvidence(BaseModel):
     context: str
     context_ref: str
     occurred_at: datetime
+    submitted_at: datetime | None = None
+    capability_name: str = ""
+    artifacts: list[ArtifactOut] = []
     review: EvidenceReviewResponse | None
     # False when the deterministic fallback produced the review, not a model.
     ai_generated: bool
+
+
+class ManagerDecisionOut(BaseModel):
+    decision: str
+    strength: str
+    feedback: str
+    decided_at: datetime
+    overrode_ai: bool
+
+
+class MyEvidence(BaseModel):
+    """The learner's own evidence history, with where each item stands."""
+
+    evidence_id: str
+    capability_id: str
+    capability_name: str
+    title: str
+    content: str
+    context: str
+    context_ref: str
+    occurred_at: datetime
+    submitted_at: datetime
+    validation_status: str
+    artifacts: list[ArtifactOut]
+    review: EvidenceReviewResponse | None
+    decision: ManagerDecisionOut | None
 
 
 class ValidationRequest(BaseModel):
@@ -172,6 +273,10 @@ async def submit_evidence(
     )
     if capability is None:
         raise HTTPException(status_code=404, detail="Capability not found.")
+    try:
+        artifacts = classify_artifacts([a.model_dump() for a in payload.artifacts])
+    except ArtifactError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     evidence = Evidence(
         tenant_id=user.tenant_id,
@@ -184,6 +289,7 @@ async def submit_evidence(
         context_ref=payload.context_ref,
         occurred_at=payload.occurred_at or datetime.now(UTC),
         validation_status=ValidationStatus.PENDING,
+        artifacts=artifacts,
     )
     session.add(evidence)
     await session.flush()
@@ -215,8 +321,9 @@ async def list_pending_validation(
 ) -> list[PendingEvidence]:
     """Evidence awaiting validation from people this user supervises."""
     query = (
-        select(Evidence, EvidenceReview, User)
+        select(Evidence, EvidenceReview, User, Capability.name)
         .join(User, User.id == Evidence.learner_id)
+        .join(Capability, Capability.id == Evidence.capability_id)
         .outerjoin(EvidenceReview, EvidenceReview.evidence_id == Evidence.id)
         .where(
             Evidence.tenant_id == user.tenant_id,
@@ -239,11 +346,61 @@ async def list_pending_validation(
             context=ev.context,
             context_ref=ev.context_ref,
             occurred_at=ev.occurred_at,
+            submitted_at=ev.created_at,
+            capability_name=capability_name,
+            artifacts=[ArtifactOut(**a) for a in ev.artifact_list],
             review=EvidenceReviewResponse.of(rv) if rv else None,
             ai_generated=bool(rv and rv.model_generated),
         )
-        for ev, rv, learner in (await session.execute(query)).all()
+        for ev, rv, learner, capability_name in (await session.execute(query)).all()
     ]
+
+
+@router.get("/mine", response_model=list[MyEvidence])
+async def my_evidence(
+    user: User = Depends(current_user),
+    session: AsyncSession = Depends(get_db),
+) -> list[MyEvidence]:
+    """The caller's own submissions, newest first, with review and decision."""
+    rows = (
+        await session.execute(
+            select(Evidence, EvidenceReview, Capability.name)
+            .join(Capability, Capability.id == Evidence.capability_id)
+            .outerjoin(EvidenceReview, EvidenceReview.evidence_id == Evidence.id)
+            .where(Evidence.tenant_id == user.tenant_id, Evidence.learner_id == user.id)
+            .order_by(Evidence.created_at.desc())
+        )
+    ).all()
+    ids = [ev.id for ev, _, _ in rows]
+    decisions: dict[str, ManagerValidation] = {}
+    if ids:
+        for v in (
+            await session.execute(
+                select(ManagerValidation)
+                .where(ManagerValidation.evidence_id.in_(ids))
+                .order_by(ManagerValidation.decided_at)
+            )
+        ).scalars():
+            decisions[v.evidence_id] = v  # latest wins
+
+    out: list[MyEvidence] = []
+    for ev, rv, capability_name in rows:
+        v = decisions.get(ev.id)
+        out.append(
+            MyEvidence(
+                evidence_id=ev.id, capability_id=ev.capability_id,
+                capability_name=capability_name, title=ev.title, content=ev.content,
+                context=ev.context, context_ref=ev.context_ref, occurred_at=ev.occurred_at,
+                submitted_at=ev.created_at, validation_status=str(ev.validation_status),
+                artifacts=[ArtifactOut(**a) for a in ev.artifact_list],
+                review=EvidenceReviewResponse.of(rv) if rv else None,
+                decision=ManagerDecisionOut(
+                    decision=str(v.decision), strength=str(v.strength), feedback=v.feedback,
+                    decided_at=v.decided_at, overrode_ai=v.overrode_ai,
+                ) if v else None,
+            )
+        )
+    return out
 
 
 @router.post("/{evidence_id}/validate", response_model=CapabilityStateResponse)
