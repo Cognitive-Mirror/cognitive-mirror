@@ -41,11 +41,10 @@ function segments(text: string, spans: Span[]): Segment[] {
 export function VerifiedQuoteBadge({ count }: { count: number }) {
   return (
     <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300"
-      style={{ background: "rgba(16,185,129,0.12)" }}
+      className="tag tag-does"
       title="Every highlighted passage was located word-for-word in this text by the server before the AI judgement was accepted. Quotes it could not find were discarded."
     >
-      <ShieldCheck className="h-3 w-3" />
+      <ShieldCheck />
       Server-Verified Verbatim Quote{count === 1 ? "" : "s"} · {count}
     </span>
   );
@@ -73,7 +72,7 @@ export function HighlightedText({
           <VerifiedQuoteBadge count={marked} />
         </div>
       )}
-      <p className="whitespace-pre-line text-sm leading-7 t-fg">
+      <p className="reading whitespace-pre-line">
         {parts.map((p, i) =>
           p.span ? (
             <mark
@@ -83,26 +82,22 @@ export function HighlightedText({
               onMouseLeave={() => setHover(null)}
               onFocus={() => setHover(p.index!)}
               onBlur={() => setHover(null)}
-              className="relative rounded px-0.5 text-inherit outline-none transition"
-              style={{
-                background: hover === p.index ? "rgba(16,185,129,0.32)" : "rgba(16,185,129,0.18)",
-                boxShadow: "inset 0 -2px 0 rgba(16,185,129,0.65)",
-              }}
+              className="quote-mark relative"
             >
               {p.text}
               {hover === p.index && (p.span.label || p.span.note) && (
                 <span
                   role="tooltip"
-                  className="absolute bottom-full left-0 z-30 mb-2 block w-72 rounded-xl p-3 text-[11px] font-normal leading-5 shadow-xl"
-                  style={{ background: "var(--bg-card)", border: "1px solid var(--border-md)", color: "var(--fg)" }}
+                  className="absolute bottom-full left-0 z-30 mb-2 block w-72 p-3 font-sans text-xs font-normal leading-5"
+                  style={{ background: "var(--inverse)", color: "var(--on-inverse)", boxShadow: "var(--shadow-2)" }}
                 >
                   {p.span.label && (
-                    <span className="block font-mono text-[10px]" style={{ color: "var(--accent-fg)" }}>
+                    <span className="code block opacity-80">
                       {p.span.label}
                     </span>
                   )}
-                  {p.span.note && <span className="mt-1 block t-muted">{p.span.note}</span>}
-                  <span className="mt-1.5 block text-[10px] text-emerald-600 dark:text-emerald-400">
+                  {p.span.note && <span className="mt-1 block">{p.span.note}</span>}
+                  <span className="mt-1.5 block opacity-70">
                     Located verbatim at characters {p.span.start}–{p.span.end}
                   </span>
                 </span>

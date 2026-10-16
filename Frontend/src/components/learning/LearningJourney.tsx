@@ -12,30 +12,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ArrowRight,
-  BookOpen,
-  Bot,
-  Briefcase,
-  CheckCircle2,
-  ClipboardCheck,
-  Loader2,
-  Lock,
-  Users,
-} from "lucide-react";
+import { ArrowRight, Check, Loader2, Lock } from "lucide-react";
 
-import {
-  AppShell,
-  Card,
-  ErrorNote,
-  Loading,
-  PageIntro,
-  describeError,
-  fieldClass,
-  fieldStyle,
-} from "@/components/AppShell";
+import { AppShell, ErrorNote, Loading, PageIntro, describeError } from "@/components/AppShell";
+import { Mirror, narrate } from "@/components/explain/Mirror";
 import { ExerciseInput, ResultLine } from "@/components/learning/Exercises";
-import { KnowsDoes } from "@/components/learning/KnowsDoes";
 import { PreviewModal } from "@/components/learning/PreviewModal";
 import { useResource } from "@/lib/useResource";
 import {
@@ -57,60 +38,70 @@ import {
 
 // --- Journey -----------------------------------------------------------------
 
-const KIND_META: Record<ActivitySummary["kind"], { icon: typeof BookOpen; label: string }> = {
-  elearn: { icon: BookOpen, label: "E-learn" },
-  assessment: { icon: ClipboardCheck, label: "Assessment" },
-  peer_activity: { icon: Users, label: "Peer practice" },
-  ai_practice: { icon: Bot, label: "AI practice" },
+const KIND_LABEL: Record<ActivitySummary["kind"], string> = {
+  elearn: "E-learn",
+  assessment: "Assessment",
+  peer_activity: "Peer practice",
+  ai_practice: "AI practice",
 };
 
 function stageLabel(a: ActivitySummary) {
   if (a.kind === "assessment" && a.phase === "pre") return "Starting point";
   if (a.kind === "assessment" && a.phase === "post") return "After learning";
-  return KIND_META[a.kind].label;
+  return KIND_LABEL[a.kind];
 }
 
-function Stage({ a }: { a: ActivitySummary }) {
+function StepDot({ n, state }: { n: number; state: "done" | "open" | "locked" | "work" }) {
+  const styles: Record<typeof state, React.CSSProperties> = {
+    done: { background: "var(--knows)", color: "#fff", borderColor: "var(--knows)" },
+    open: { background: "var(--bg)", color: "var(--knows-ink)", borderColor: "var(--knows)" },
+    locked: { background: "var(--bg)", color: "var(--ink-3)", borderColor: "var(--line-strong)" },
+    work: { background: "var(--does)", color: "#fff", borderColor: "var(--does)" },
+  };
+  return (
+    <span
+      className="num relative z-10 grid h-8 w-8 shrink-0 place-items-center text-[13px] font-semibold"
+      style={{ border: "2px solid", ...styles[state] }}
+    >
+      {state === "done" ? <Check className="h-4 w-4" /> : state === "locked" ? <Lock className="h-3.5 w-3.5" /> : n}
+    </span>
+  );
+}
+
+function Stage({ a, n }: { a: ActivitySummary; n: number }) {
   const [preview, setPreview] = useState(false);
-  const { icon: Icon } = KIND_META[a.kind];
-  const previewable = !a.available && (a.kind === "peer_activity" || a.kind === "ai_practice");
   const done = a.attempts_used > 0;
   const exhausted = a.max_attempts > 0 && a.attempts_used >= a.max_attempts;
+  const previewable = !a.available && (a.kind === "peer_activity" || a.kind === "ai_practice");
+  const state = !a.available ? "locked" : done ? "done" : "open";
+
+  const status = !a.available
+    ? `Opens ${a.available_from ? new Date(a.available_from).toLocaleDateString() : "later"}`
+    : done
+      ? `First attempt ${pct(a.first_score)}${a.attempts_used > 1 ? ` · latest ${pct(a.latest_score)}` : ""}${a.latest_status === "scoring" ? " · open answers being marked" : ""}${exhausted ? " · complete" : ""}`
+      : `${a.item_count} exercises · about ${a.estimated_minutes} min`;
+
   const body = (
-    <div
-      className="flex items-start gap-4 rounded-2xl p-4 transition"
-      style={{
-        border: "1px solid var(--border)",
-        background: a.available ? "var(--bg-card)" : "var(--bg-subtle)",
-        opacity: a.available ? 1 : 0.7,
-      }}
-    >
-      <span
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
-        style={{ background: done ? "rgba(16,185,129,.12)" : "rgba(99,102,241,.12)" }}
-      >
-        {done ? <CheckCircle2 className="h-5 w-5 text-emerald-500" /> : a.available ? <Icon className="h-5 w-5 text-indigo-500" /> : <Lock className="h-4 w-4 t-subtle-fg" />}
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-bold uppercase tracking-[.16em] t-subtle-fg">{stageLabel(a)}</p>
-        <p className="mt-0.5 font-medium t-fg">{a.title}</p>
-        <p className="mt-1 text-xs leading-5 t-muted">{a.summary}</p>
-        <p className="mt-2 text-[11px] t-subtle-fg">
-          {!a.available
-            ? `Available from ${a.available_from ? new Date(a.available_from).toLocaleDateString() : "a later date"}${previewable ? " · preview it now" : ""}`
-            : done
-              ? `First attempt ${pct(a.first_score)}${a.attempts_used > 1 ? ` · latest ${pct(a.latest_score)}` : ""}${a.latest_status === "scoring" ? " · open answers being marked" : ""}`
-              : `${a.item_count} exercises · ~${a.estimated_minutes} min`}
-          {exhausted && " · completed"}
+    <div className="flex gap-4 py-4">
+      <StepDot n={n} state={state} />
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="meta">{stageLabel(a)}</p>
+        <p className="mt-0.5 text-[0.9375rem] font-medium t-fg">{a.title}</p>
+        <p className="mt-1 text-sm leading-6 t-muted">{a.summary}</p>
+        <p className="meta mt-1.5 num">
+          {status}
+          {previewable && <span className="ink-primary"> · preview it now</span>}
         </p>
       </div>
-      {a.available && !exhausted && <ArrowRight className="mt-3 h-4 w-4 shrink-0 t-subtle-fg" />}
+      {(previewable || (a.available && !exhausted)) && <ArrowRight className="mt-2 h-4 w-4 shrink-0 ink-primary" />}
     </div>
   );
+
+  const rowClass = "block w-full  px-3 text-left transition hover:bg-[var(--surface)]";
   if (previewable) {
     return (
       <>
-        <button type="button" onClick={() => setPreview(true)} className="block w-full text-left hover:opacity-90">
+        <button type="button" onClick={() => setPreview(true)} className={rowClass}>
           {body}
         </button>
         {preview && <PreviewModal activity={a} onClose={() => setPreview(false)} />}
@@ -118,33 +109,26 @@ function Stage({ a }: { a: ActivitySummary }) {
     );
   }
   return a.available && !exhausted ? (
-    <Link href={`/learner/learn/${a.id}`} className="block hover:opacity-90">{body}</Link>
+    <Link href={`/learner/learn/${a.id}`} className={rowClass}>{body}</Link>
   ) : (
-    body
+    <div className="px-3">{body}</div>
   );
 }
 
-function ApplyAtWork({ state }: { state?: CapabilityState }) {
+function ApplyAtWork({ state, n }: { state?: CapabilityState; n: number }) {
   return (
-    <Link href="/learner/evidence" className="block hover:opacity-90">
-      <div
-        className="flex items-start gap-4 rounded-2xl p-4"
-        style={{ border: "1px solid rgba(99,102,241,.35)", background: "rgba(99,102,241,.06)" }}
-      >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-indigo-500 text-white">
-          <Briefcase className="h-5 w-5" />
-        </span>
-        <div className="flex-1">
-          <p className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: "var(--accent-fg)" }}>
-            Implement at work
+    <Link href="/learner/evidence" className="block px-3 transition hover:bg-[var(--surface)]">
+      <div className="flex gap-4 py-4">
+        <StepDot n={n} state="work" />
+        <div className="flex-1 pt-0.5">
+          <p className="meta ink-does">Implement at work</p>
+          <p className="mt-0.5 text-[0.9375rem] font-medium t-fg">Apply it, then submit the evidence</p>
+          <p className="mt-1 text-sm leading-6 t-muted">
+            The only step that moves your level. Your manager validates what you did.
           </p>
-          <p className="mt-0.5 font-medium t-fg">Apply it, then submit the evidence</p>
-          <p className="mt-1 text-xs leading-5 t-muted">
-            The only step that moves your capability level. Your manager validates what you did.
-          </p>
-          {state && <p className="mt-2 text-xs t-fg">{state.recommended_next_action}</p>}
+          {state && <p className="mt-1.5 text-sm t-fg">{state.recommended_next_action}</p>}
         </div>
-        <ArrowRight className="mt-3 h-4 w-4 shrink-0" style={{ color: "var(--accent-fg)" }} />
+        <ArrowRight className="mt-2 h-4 w-4 shrink-0 ink-does" />
       </div>
     </Link>
   );
@@ -167,31 +151,43 @@ export function LearningJourneyPage() {
   return (
     <AppShell role="learner" active="/learner/learn">
       <PageIntro
-        eyebrow="Learner / Learning Journey"
-        title="Learn it. Check it. Do it."
-        text="E-learns and assessments build and measure what you know. Capability moves when you apply it at work and your manager validates it — the journey always ends there."
+        title={<><em>Learn it.</em> Check it. <em className="does">Do it.</em></>}
+        text="E-learns and assessments build and measure what you know. Your level moves when you apply it at work and your manager validates it, so the journey always ends there."
       />
-      {journey.loading && <Loading label="Loading your journey…" />}
+      {journey.loading && !journey.data && <Loading label="Loading your journey…" />}
       {journey.error && <ErrorNote message={journey.error} onRetry={journey.reload} />}
-      {!journey.loading && !journey.error && byCapability.length === 0 && (
-        <Card><p className="text-sm t-muted">No learning activities have been assigned yet.</p></Card>
+      {journey.data && byCapability.length === 0 && (
+        <p className="inset px-5 py-6 text-sm t-muted">No learning activities have been assigned yet.</p>
       )}
-      <div className="space-y-8">
+      <div className="space-y-16">
         {byCapability.map(([capabilityId, acts]) => {
           const state = states.find((s) => s.capability_id === capabilityId);
           return (
-            <section key={capabilityId} className="grid gap-5 lg:grid-cols-[1fr_300px]">
+            <section key={capabilityId} className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-14">
               <div>
-                <h2 className="mb-3 text-xl font-semibold t-fg">{acts[0].capability_name}</h2>
-                <div className="space-y-3">
-                  {acts.map((a) => <Stage key={a.id} a={a} />)}
-                  <ApplyAtWork state={state} />
-                </div>
+                <h2 className="display display-md">{acts[0].capability_name}</h2>
+                <ol className="relative mt-4">
+                  {/* the path */}
+                  <span aria-hidden className="absolute bottom-10 left-[1.69rem] top-10 w-px" style={{ background: "var(--line-strong)" }} />
+                  {acts.map((a, i) => (
+                    <li key={a.id}><Stage a={a} n={i + 1} /></li>
+                  ))}
+                  <li><ApplyAtWork state={state} n={acts.length + 1} /></li>
+                </ol>
               </div>
               {state && (
-                <div className="lg:pt-10">
-                  <KnowsDoes state={state} />
-                </div>
+                <aside className="lg:pt-14">
+                  <p className="display text-[1.125rem] leading-snug">{narrate(state).headline}</p>
+                  <div className="mt-5">
+                    <Mirror state={state} />
+                  </div>
+                  {state.knowledge_pre !== null && state.knowledge_post !== null && (
+                    <p className="meta mt-5 num">
+                      Assessment {pct(state.knowledge_pre)} → {pct(state.knowledge_post)}
+                      {state.knowledge_gain !== null && <> · learning gain {Math.round(state.knowledge_gain * 100)}% of what was left to learn</>}
+                    </p>
+                  )}
+                </aside>
               )}
             </section>
           );
@@ -274,113 +270,114 @@ export function ActivityPlayerPage({ activityId }: { activityId: string }) {
   const isAssessment = activity.kind === "assessment";
 
   const renderItem = (item: ActivityDetail["items"][number], n: number) => (
-    <Card key={item.id} className="!p-5">
-      <p className="text-[10px] font-bold uppercase tracking-[.16em] t-subtle-fg">
-        Exercise {n} · {item.dimension}
-        {item.points !== 1 && ` · ${item.points} points`}
-      </p>
-      <p className="mb-4 mt-2 text-sm font-medium leading-6 t-fg">{item.prompt}</p>
-      <ExerciseInput
-        item={item}
-        value={answers[item.id] ?? {}}
-        onChange={(v) => setAnswers((prev) => ({ ...prev, [item.id]: v }))}
-        result={resultFor(item.id)}
-      />
-      {resultFor(item.id) && <ResultLine result={resultFor(item.id)!} />}
-    </Card>
+    <section key={item.id} className="rule py-8" aria-labelledby={`q-${item.id}`}>
+      <div className="grid gap-4 sm:grid-cols-[2.5rem_1fr]">
+        <span className="display text-2xl leading-none ink-primary num">{n}</span>
+        <div className="min-w-0">
+          <p className="meta capitalize">
+            {item.dimension}
+            {item.points !== 1 && ` · ${item.points} points`}
+          </p>
+          <p id={`q-${item.id}`} className="mb-5 mt-1 text-[0.9375rem] font-medium leading-6 t-fg">{item.prompt}</p>
+          <ExerciseInput
+            item={item}
+            value={answers[item.id] ?? {}}
+            onChange={(v) => setAnswers((prev) => ({ ...prev, [item.id]: v }))}
+            result={resultFor(item.id)}
+          />
+          {resultFor(item.id) && <ResultLine result={resultFor(item.id)!} />}
+        </div>
+      </div>
+    </section>
   );
 
   let counter = 0;
   return (
     <AppShell role="learner" active="/learner/learn">
-      <PageIntro
-        eyebrow={`${activity.capability_name} / ${isAssessment ? (activity.phase === "pre" ? "Starting point" : "After learning") : "E-learn"}`}
-        title={activity.title}
-        text={activity.summary}
-      />
-
-      {isAssessment && !result && (
-        <p className="mb-5 rounded-xl px-4 py-3 text-xs leading-5 t-muted" style={{ background: "var(--bg-subtle)" }}>
-          {activity.phase === "pre"
-            ? "This is a baseline, taken once. Answer from what you know now — a low score here is expected and is what makes your progress measurable."
-            : "This measures what moved since your starting point. Answers are not revealed, so the measurement stays honest."}
+      <div className="max-w-[52rem]">
+        <p className="meta">
+          {activity.capability_name} · {isAssessment ? (activity.phase === "pre" ? "Starting point" : "After learning") : "E-learn"}
         </p>
-      )}
+        <h1 className="display display-lg mt-2">{activity.title}</h1>
+        <p className="lede mt-3">{activity.summary}</p>
 
-      {result && <AttemptSummaryCard result={result} activity={activity} />}
+        {isAssessment && !result && (
+          <p className="note note-info mt-6">
+            {activity.phase === "pre"
+              ? "This is a baseline, taken once. Answer from what you know now: a low score here is expected, and it is what makes your progress measurable."
+              : "This measures what moved since your starting point. Answers are not revealed, so the measurement stays honest."}
+          </p>
+        )}
 
-      <div className="space-y-5">
-        {activity.sections.map((section, idx) => (
-          <div key={section.heading} className="space-y-5">
-            <Card>
-              <h2 className="text-lg font-semibold t-fg">{section.heading}</h2>
-              <div className="mt-3 space-y-3 text-sm leading-7 t-muted">
-                {section.body.split("\n\n").map((para) => (
-                  <p key={para.slice(0, 40)} className="whitespace-pre-line">{para}</p>
-                ))}
-              </div>
-            </Card>
-            {itemsAfter(idx).map((item) => renderItem(item, ++counter))}
-          </div>
-        ))}
-        {trailing.map((item) => renderItem(item, ++counter))}
-      </div>
+        {result && <AttemptSummary result={result} activity={activity} />}
 
-      {error && <div className="mt-5"><ErrorNote message={error} /></div>}
-
-      {!result && (
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          <button
-            onClick={submit}
-            disabled={submitting}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            Submit answers
-          </button>
-          {unanswered > 0 && (
-            <span className="text-xs t-subtle-fg">
-              {unanswered} unanswered — they will score zero.
-            </span>
-          )}
+        <div className="mt-8">
+          {activity.sections.map((section, idx) => (
+            <div key={section.heading}>
+              <section className="rule py-8">
+                <h2 className="display display-sm">{section.heading}</h2>
+                <div className="mt-4 space-y-4">
+                  {section.body.split("\n\n").map((para) => (
+                    <p key={para.slice(0, 40)} className="reading whitespace-pre-line">{para}</p>
+                  ))}
+                </div>
+              </section>
+              {itemsAfter(idx).map((item) => renderItem(item, ++counter))}
+            </div>
+          ))}
+          {trailing.map((item) => renderItem(item, ++counter))}
         </div>
-      )}
+
+        {error && <div className="mt-5"><ErrorNote message={error} /></div>}
+
+        {!result && (
+          <div className="rule flex flex-wrap items-center gap-4 pt-6">
+            <button onClick={submit} disabled={submitting} className="btn btn-primary btn-lg">
+              {submitting && <Loader2 className="animate-spin" />}
+              Submit answers
+            </button>
+            {unanswered > 0 && (
+              <span className="meta">{unanswered} unanswered: they will score zero.</span>
+            )}
+          </div>
+        )}
+      </div>
     </AppShell>
   );
 }
 
-function AttemptSummaryCard({ result, activity }: { result: AttemptResult; activity: ActivityDetail }) {
+function AttemptSummary({ result, activity }: { result: AttemptResult; activity: ActivityDetail }) {
   return (
-    <Card className="mb-6">
+    <section className="mt-8 rule rule-b py-6" aria-label="Your result">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="text-xs t-subtle-fg">Attempt {result.attempt_number}</p>
-          <p className="mt-1 text-4xl font-semibold tracking-tight t-fg">{pct(result.score)}</p>
-          <p className="mt-1 text-xs t-muted">
+          <p className="meta">Attempt {result.attempt_number}</p>
+          <p className="display num mt-1 text-5xl ink-knows">{pct(result.score)}</p>
+          <p className="meta mt-2 num">
             {result.points_earned.toFixed(1)} of {result.points_scored.toFixed(1)} marked points
             {result.pending_items > 0 && ` · ${result.pending_items} open answer${result.pending_items > 1 ? "s" : ""} still being marked`}
           </p>
         </div>
-        {result.pending_items > 0 && <Loader2 className="h-5 w-5 animate-spin text-indigo-400" />}
+        {result.pending_items > 0 && <Loader2 className="h-5 w-5 animate-spin ink-primary" />}
       </div>
-      <p className="mt-4 text-xs leading-5 t-muted">
-        This measures what you <strong className="t-fg">know</strong>. Your capability level moves when you apply
+      <p className="mt-4 max-w-[60ch] text-sm leading-6 t-muted">
+        This measures what you <strong className="font-medium ink-knows">know</strong>. Your level moves when you apply
         it at work and your manager validates it.
       </p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Link href="/learner/learn" className="rounded-xl px-4 py-2.5 text-sm font-semibold t-fg" style={{ border: "1px solid var(--border)" }}>
-          Back to journey
+      <div className="mt-5 flex flex-wrap gap-2">
+        <Link href="/learner/evidence" className="btn btn-primary">
+          Apply it at work <ArrowRight />
         </Link>
-        <Link href="/learner/evidence" className="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white">
-          Apply it at work <ArrowRight className="h-4 w-4" />
+        <Link href="/learner/learn" className="btn btn-secondary">
+          Back to the journey
         </Link>
         {activity.kind === "elearn" && (
-          <button onClick={() => window.location.reload()} className="rounded-xl px-4 py-2.5 text-sm t-muted">
-            Try again (first attempt is what counts)
+          <button onClick={() => window.location.reload()} className="btn btn-text">
+            Try again (the first attempt is what counts)
           </button>
         )}
       </div>
-    </Card>
+    </section>
   );
 }
 
@@ -411,34 +408,33 @@ export function OpenAnswerQueuePage() {
   return (
     <AppShell role="manager" active="/manager/answers">
       <PageIntro
-        eyebrow="Manager / Open Answers"
         title="Answers the AI would not mark alone."
-        text="Each one either had no model available or the marking guide did not anticipate it. Tick the key points the answer meets; the mark is the share ticked."
+        text="Each one either had no model available, or the marking guide did not anticipate it. Tick the key points the answer meets; the mark is the share ticked."
       />
-      {answers.loading && <Loading label="Loading…" />}
+      {answers.loading && !answers.data && <Loading label="Loading…" />}
       {answers.error && <ErrorNote message={answers.error} onRetry={answers.reload} />}
       {error && <ErrorNote message={error} />}
-      {!answers.loading && !answers.error && queue.length === 0 && (
-        <Card><p className="text-sm t-muted">Nothing waiting. Every open answer has been marked.</p></Card>
+      {answers.data && queue.length === 0 && (
+        <p className="inset px-5 py-6 text-sm t-muted">Nothing waiting. Every open answer has been marked.</p>
       )}
-      <div className="space-y-5">
+      <div className="rows rule">
         {queue.map((entry) => {
           const met = marks[entry.response_id] ?? entry.key_points.map(() => false);
           return (
-            <Card key={entry.response_id}>
-              <p className="text-xs t-subtle-fg">{entry.activity_title} · {entry.learner_name}</p>
-              <p className="mt-2 text-sm font-medium leading-6 t-fg">{entry.question}</p>
-              <blockquote className="mt-3 rounded-xl p-4 text-sm leading-6 t-fg" style={{ background: "var(--bg-subtle)" }}>
+            <article key={entry.response_id} className="max-w-[52rem] py-8">
+              <p className="meta">{entry.activity_title} · {entry.learner_name}</p>
+              <p className="mt-2 text-[0.9375rem] font-medium leading-6 t-fg">{entry.question}</p>
+              <blockquote className="reading mt-4 border-l-2 pl-4" style={{ borderColor: "var(--line-strong)" }}>
                 {entry.answer}
               </blockquote>
-              {entry.ai_note && <p className="mt-2 text-[11px] t-subtle-fg">AI note: {entry.ai_note}</p>}
-              <fieldset className="mt-4 space-y-2">
-                <legend className="mb-1 text-xs font-semibold t-fg">Key points met</legend>
+              {entry.ai_note && <p className="meta mt-3">AI note: {entry.ai_note}</p>}
+              <fieldset className="mt-5 space-y-2.5">
+                <legend className="field-label">Key points met</legend>
                 {entry.key_points.map((kp, i) => (
-                  <label key={kp} className="flex items-start gap-2 text-sm t-muted">
+                  <label key={kp} className="flex items-start gap-3 text-sm leading-6 t-fg">
                     <input
                       type="checkbox"
-                      className="mt-1 h-4 w-4 accent-indigo-500"
+                      className="mt-1 h-4 w-4"
                       checked={met[i]}
                       onChange={() => {
                         const next = [...met];
@@ -455,18 +451,17 @@ export function OpenAnswerQueuePage() {
                 placeholder="Feedback for the learner (optional)"
                 value={notes[entry.response_id] ?? ""}
                 onChange={(e) => setNotes((n) => ({ ...n, [entry.response_id]: e.target.value }))}
-                className={`mt-4 ${fieldClass}`}
-                style={fieldStyle}
+                className="field mt-5"
               />
               <button
                 onClick={() => save(entry)}
                 disabled={saving === entry.response_id}
-                className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                className="btn btn-primary mt-4"
               >
-                {saving === entry.response_id && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save mark ({met.filter(Boolean).length}/{entry.key_points.length})
+                {saving === entry.response_id && <Loader2 className="animate-spin" />}
+                Save mark · {met.filter(Boolean).length} of {entry.key_points.length}
               </button>
-            </Card>
+            </article>
           );
         })}
       </div>

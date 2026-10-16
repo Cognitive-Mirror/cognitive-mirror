@@ -83,10 +83,6 @@ function readCollapsed(): boolean {
   return window.innerWidth < 640;
 }
 
-function initials(name: string) {
-  return name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
-}
-
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "—" : `${Math.round(v * 100)}%`);
 
 export function DemoToolbar() {
@@ -199,6 +195,8 @@ export function DemoToolbar() {
     }
   }
 
+  // The sign-in page carries its own quick access; the panel would cover it.
+  if (pathname === "/") return null;
   if (!data && !offline) return null;
 
   const personas = data?.personas ?? [];
@@ -207,7 +205,7 @@ export function DemoToolbar() {
   const secondary = personas.filter((p) => !PRIMARY.some((x) => x.key === p.key));
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[min(380px,calc(100vw-2rem))] flex-col items-end gap-2">
+    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex w-[min(360px,calc(100vw-2rem))] flex-col items-end gap-2">
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -215,128 +213,109 @@ export function DemoToolbar() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className={`pointer-events-auto flex w-full items-start gap-2 rounded-xl px-3.5 py-2.5 text-xs leading-5 shadow-lg ${
-              toast.tone === "ok" ? "text-emerald-50" : "text-amber-50"
-            }`}
-            style={{ background: toast.tone === "ok" ? "rgba(5,150,105,.95)" : "rgba(180,83,9,.95)" }}
+            transition={{ duration: 0.2 }}
+            className="snackbar pointer-events-auto w-full"
           >
-            {toast.tone === "ok" ? <CircleCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" /> : <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />}
-            {toast.text}
+            {toast.tone === "ok" ? (
+              <CircleCheck className="h-4 w-4 shrink-0" style={{ color: "var(--does)" }} />
+            ) : (
+              <CircleAlert className="h-4 w-4 shrink-0" style={{ color: "var(--pending)" }} />
+            )}
+            <span className="leading-5">{toast.text}</span>
           </motion.div>
         )}
       </AnimatePresence>
 
-      <div
-        className="pointer-events-auto w-full overflow-hidden rounded-2xl shadow-2xl backdrop-blur-xl"
-        style={{ border: "1px solid var(--border-md)", background: "color-mix(in srgb, var(--bg-card) 92%, transparent)" }}
-      >
-        <button
-          type="button"
-          onClick={toggle}
-          aria-expanded={!collapsed}
-          className="flex w-full items-center gap-2 px-3.5 py-2.5 text-left"
-        >
-          <span className="grid h-6 w-6 place-items-center rounded-lg bg-indigo-500 text-white">
-            <Sparkles className="h-3.5 w-3.5" />
-          </span>
+      <div className="pointer-events-auto w-full overflow-hidden" style={{ background: "var(--bg)", boxShadow: "var(--shadow-2)" }}>
+        <button type="button" onClick={toggle} aria-expanded={!collapsed} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface)]">
+          <Sparkles className="h-4 w-4 shrink-0 ink-primary" />
           <span className="min-w-0 flex-1">
-            <span className="block text-[10px] font-bold uppercase tracking-[.16em] t-subtle-fg">
-              Demo mode{data ? ` · ${data.org_name}` : ""}
-            </span>
-            <span className="block truncate text-xs font-semibold t-fg">
+            <span className="block truncate text-sm font-medium t-fg">
               {offline
-                ? "Backend unreachable — start it with npm run dev"
+                ? "Backend unreachable"
                 : current
                   ? `${current.display_name} · ${current.role}`
-                  : "No persona — choose one"}
+                  : "Demo mode · choose a persona"}
+            </span>
+            <span className="meta block truncate">
+              {offline ? "Start it with npm run dev" : data?.org_name}
             </span>
           </span>
           {collapsed ? <ChevronUp className="h-4 w-4 t-muted" /> : <ChevronDown className="h-4 w-4 t-muted" />}
         </button>
 
         {!collapsed && data && (
-          <div className="space-y-3 px-3.5 pb-3.5">
+          <div className="space-y-4 px-4 pb-4 pt-1">
             {current?.summary && (
-              <div className="flex items-center gap-3 rounded-xl p-2.5" style={{ background: "var(--bg-subtle)" }}>
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 text-xs font-bold text-white">
-                  {initials(current.display_name)}
-                </span>
-                <div className="min-w-0 text-[11px] leading-4">
-                  <p className="truncate font-semibold t-fg">{current.archetype}</p>
-                  <p className="t-muted">
-                    {current.summary.capability_name}: <strong className="t-fg capitalize">{current.summary.attained_level}</strong>
-                    {" · conf "}
-                    <strong className="t-fg">{current.summary.state_confidence.toFixed(2)}</strong>
-                    {" · knows "}
-                    <strong className="t-fg">{pct(current.summary.knowledge_mastery)}</strong>
-                  </p>
+              <div className="rule pt-3 text-[13px] leading-5">
+                <p className="font-medium t-fg">{current.archetype}</p>
+                <p className="num t-muted">
+                  {current.summary.capability_name}:{" "}
+                  <span className="ink-does font-medium capitalize">{current.summary.attained_level}</span>
+                  {" · confidence "}
+                  <span className="font-medium t-fg">{current.summary.state_confidence.toFixed(2)}</span>
+                  {" · knows "}
+                  <span className="ink-knows font-medium">{pct(current.summary.knowledge_mastery)}</span>
+                </p>
+              </div>
+            )}
+
+            <div>
+              <p className="caption mb-2">Act as</p>
+              <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Act as">
+                {PRIMARY.map(({ key, label, hint }) => {
+                  const p = byKey(key);
+                  if (!p) return null;
+                  const on = p.email === active;
+                  return (
+                    <button
+                      key={key}
+                      onClick={() => choose(p)}
+                      aria-pressed={on}
+                      title={p.headline}
+                      className="px-3 py-2 text-left text-[13px] font-medium transition"
+                      style={
+                        on
+                          ? { background: "var(--primary-soft)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--primary)" }
+                          : { background: "var(--bg)", color: "var(--ink)", boxShadow: "inset 0 0 0 1px var(--line-strong)" }
+                      }
+                    >
+                      {label}
+                      {hint && <span className="meta block font-normal">{hint}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {secondary.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                  {secondary.map((p) => (
+                    <button
+                      key={p.key}
+                      onClick={() => choose(p)}
+                      aria-pressed={p.email === active}
+                      title={p.headline}
+                      className={`text-[12px] font-medium hover:underline ${p.email === active ? "t-fg underline" : "ink-primary"}`}
+                    >
+                      {p.display_name.split(" ")[0]} · {p.archetype}
+                    </button>
+                  ))}
                 </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-1.5" role="group" aria-label="Act as">
-              {PRIMARY.map(({ key, label, hint }) => {
-                const p = byKey(key);
-                if (!p) return null;
-                const on = p.email === active;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => choose(p)}
-                    aria-pressed={on}
-                    title={p.headline}
-                    className="rounded-xl px-2.5 py-2 text-left text-[11px] font-semibold transition"
-                    style={
-                      on
-                        ? { background: "var(--accent)", color: "white" }
-                        : { background: "var(--bg-subtle)", color: "var(--fg)", border: "1px solid var(--border)" }
-                    }
-                  >
-                    {label}
-                    {hint && <span className={`block text-[10px] font-normal ${on ? "text-indigo-100" : "t-subtle-fg"}`}>{hint}</span>}
-                  </button>
-                );
-              })}
+              )}
             </div>
-            {secondary.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {secondary.map((p) => (
-                  <button
-                    key={p.key}
-                    onClick={() => choose(p)}
-                    aria-pressed={p.email === active}
-                    title={p.headline}
-                    className="rounded-full px-2.5 py-1 text-[10px] font-medium transition"
-                    style={
-                      p.email === active
-                        ? { background: "var(--accent)", color: "white" }
-                        : { background: "var(--bg-subtle)", color: "var(--fg-muted)" }
-                    }
-                  >
-                    {p.display_name.split(" ")[0]} · {p.archetype}
-                  </button>
-                ))}
-              </div>
-            )}
 
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => void reset()}
-                disabled={resetting}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-indigo-500 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-60"
-              >
-                {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+            <div className="flex items-center gap-1.5 rule pt-3">
+              <button onClick={() => void reset()} disabled={resetting} className="btn btn-primary btn-sm flex-1">
+                {resetting ? <Loader2 className="animate-spin" /> : <RotateCcw />}
                 {resetting ? "Resetting…" : "Reset demo data"}
               </button>
               <button
                 onClick={() => void probe()}
                 disabled={probing}
                 title="Check the live model with a 1-token call"
-                className="inline-flex items-center gap-1 rounded-xl px-2.5 py-2 text-[11px] font-medium transition disabled:opacity-60"
-                style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+                className="btn btn-neutral btn-sm"
               >
-                {probing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Cpu className="h-3.5 w-3.5" />}
-                {ai?.key_configured ? ai.vendor : "AI: cache"}
+                {probing ? <Loader2 className="animate-spin" /> : <Cpu />}
+                {ai?.key_configured ? ai.vendor : "AI check"}
               </button>
               {current && (
                 <button
@@ -347,10 +326,9 @@ export function DemoToolbar() {
                   }}
                   title="Stop acting as a persona"
                   aria-label="Stop acting as a persona"
-                  className="grid h-8 w-8 place-items-center rounded-xl transition"
-                  style={{ background: "var(--bg-subtle)" }}
+                  className="btn btn-icon h-[1.875rem] w-[1.875rem]"
                 >
-                  <LogOut className="h-3.5 w-3.5 t-muted" />
+                  <LogOut />
                 </button>
               )}
             </div>

@@ -1,20 +1,32 @@
 "use client";
 
 /**
- * The authenticated page frame: header, sidebar, session guard, and the small
- * primitives every page uses. This is the only place navigation is defined.
+ * The authenticated page frame: top bar, navigation, session guard, and the
+ * small primitives every page uses. This is the only place navigation is defined.
  *
  * The guard is a convenience, not security: the backend enforces every role
  * rule. It only keeps people from landing on a screen that would 403.
  */
 
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { CircleAlert, Loader2, LogOut } from "lucide-react";
+import {
+  BookOpenText,
+  CircleAlert,
+  FileCheck2,
+  LayoutDashboard,
+  Library,
+  Loader2,
+  LogOut,
+  MessageSquareText,
+  ShieldCheck,
+  UsersRound,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { ThemeToggle } from "@/components/ThemeControls";
+import { MirrorMark } from "@/components/explain/Mirror";
 import { ROLE_HOME, ROLE_LABEL, type RoleId } from "@/lib/auth";
 import { useResource } from "@/lib/useResource";
 import { ApiError, type Me } from "@/services/api";
@@ -22,18 +34,18 @@ import { logOut } from "@/services/authService";
 import { activePersona } from "@/services/demo";
 import { loadSession } from "@/services/session";
 
-const NAV: Record<RoleId, { label: string; href: string }[]> = {
+const NAV: Record<RoleId, { label: string; href: string; icon: LucideIcon }[]> = {
   learner: [
-    { label: "Overview", href: "/learner" },
-    { label: "Learning journey", href: "/learner/learn" },
-    { label: "Submit evidence", href: "/learner/evidence" },
+    { label: "Overview", href: "/learner", icon: LayoutDashboard },
+    { label: "Learning journey", href: "/learner/learn", icon: BookOpenText },
+    { label: "Workplace evidence", href: "/learner/evidence", icon: FileCheck2 },
   ],
   manager: [
-    { label: "Team overview", href: "/manager" },
-    { label: "Evidence validation", href: "/manager/evidence" },
-    { label: "Open answers", href: "/manager/answers" },
+    { label: "Team", href: "/manager", icon: UsersRound },
+    { label: "Evidence to validate", href: "/manager/evidence", icon: ShieldCheck },
+    { label: "Open answers", href: "/manager/answers", icon: MessageSquareText },
   ],
-  admin: [{ label: "Governance & retrieval", href: "/admin" }],
+  admin: [{ label: "Governance", href: "/admin", icon: Library }],
 };
 
 export function AppShell({
@@ -57,54 +69,50 @@ export function AppShell({
 
   if (!me || me.role !== role) {
     return (
-      <main className="grid min-h-screen place-items-center t-bg">
+      <main className="grid min-h-screen place-items-center">
         <Loading label="Checking your session…" />
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen t-bg t-fg">
-      <header
-        className="sticky top-0 z-20 backdrop-blur-xl"
-        style={{ borderBottom: "1px solid var(--border)", background: "var(--bg)" }}
-      >
-        <div className="mx-auto flex h-16 max-w-[1280px] items-center justify-between px-5 lg:px-8">
-          <div className="flex items-center gap-2">
+    <div className="min-h-screen">
+      <header className="sticky top-0 z-30 rule-b" style={{ background: "var(--bg)" }}>
+        <div className="mx-auto flex h-16 max-w-[1320px] items-center justify-between gap-4 px-4 sm:px-6">
+          <Link href={ROLE_HOME[role]} className="flex items-center gap-2.5">
+            <MirrorMark />
+            <span className="text-[1.0625rem] font-medium tracking-[-0.01em] t-fg">Cognitive Mirror</span>
+            <span className="hidden text-sm t-subtle-fg sm:inline">· {ROLE_LABEL[role]}</span>
+          </Link>
+          <div className="flex items-center gap-1">
+            <ThemeToggle />
             <ProfileMenu me={me} />
-            <Link href={ROLE_HOME[role]} className="text-sm font-semibold t-fg">
-              Cognitive Mirror
-            </Link>
           </div>
-          <ThemeToggle />
         </div>
       </header>
 
-      <div className="mx-auto grid max-w-[1280px] gap-8 px-5 py-8 lg:grid-cols-[220px_1fr] lg:px-8">
-        <nav aria-label="Workspace">
-          <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.18em] t-subtle-fg">
-            {ROLE_LABEL[role]} workspace
-          </p>
-          {NAV[role].map((item) => (
+      <div className="mx-auto grid max-w-[1320px] gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[232px_1fr] lg:gap-10 lg:py-10">
+        <nav aria-label="Workspace" className="flex gap-1 overflow-x-auto lg:block lg:space-y-0.5">
+          {NAV[role].map(({ label, href, icon: Icon }) => (
             <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active === item.href ? "page" : undefined}
-              className="mb-1 flex rounded-xl px-3 py-2.5 text-sm transition"
-              style={
-                active === item.href
-                  ? { background: "rgba(99,102,241,0.12)", color: "var(--accent-fg)" }
-                  : { color: "var(--fg-muted)" }
-              }
+              key={href}
+              href={href}
+              aria-current={active === href ? "page" : undefined}
+              className="nav-item shrink-0"
             >
-              {item.label}
+              <Icon />
+              {label}
             </Link>
           ))}
         </nav>
-        <section className="min-w-0">{children}</section>
+        <main className="min-w-0">{children}</main>
       </div>
-    </main>
+    </div>
   );
+}
+
+function initials(name: string) {
+  return name.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
 }
 
 function ProfileMenu({ me }: { me: Me }) {
@@ -130,24 +138,24 @@ function ProfileMenu({ me }: { me: Me }) {
     <div ref={ref} className="relative">
       <button
         type="button"
-        className="profile-avatar-wrapper"
+        className="btn btn-icon"
         aria-label="Account menu"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        <Image src="/avatar.svg" alt="" width={38} height={38} className="profile-avatar" />
+        <span className="avatar">{initials(name)}</span>
       </button>
       {open && (
         <div role="menu" className="profile-menu">
           <div className="profile-menu-heading">
             <p>{name}</p>
             <span>
-              {ROLE_LABEL[me.role]} account
+              {me.email} · {ROLE_LABEL[me.role]}
               {activePersona() ? " · demo persona" : ""}
             </span>
           </div>
           <button role="menuitem" onClick={() => void signOut()}>
-            <LogOut className="h-4 w-4" />
+            <LogOut />
             Sign out
           </button>
         </div>
@@ -158,50 +166,45 @@ function ProfileMenu({ me }: { me: Me }) {
 
 // --- Page primitives -------------------------------------------------------------
 
-/** Text inputs, selects and textareas share one look. */
-export const fieldClass =
-  "w-full rounded-xl px-4 py-3 text-sm outline-none transition focus:ring-2 focus:ring-indigo-400/30";
-export const fieldStyle = {
-  border: "1px solid var(--border)",
-  background: "var(--bg-input)",
-  color: "var(--fg)",
-} as const;
+/** Inputs, selects and textareas share one look. */
+export const fieldClass = "field";
+export const fieldStyle = {} as const;
 
-export function PageIntro({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
+export function PageIntro({
+  title,
+  text,
+  actions,
+}: {
+  /** Retained for call-site compatibility; headings carry their own weight. */
+  eyebrow?: string;
+  title: React.ReactNode;
+  text: string;
+  actions?: React.ReactNode;
+}) {
   return (
-    <div className="mb-8">
-      <p className="text-xs font-bold uppercase tracking-[.18em]" style={{ color: "var(--accent-fg)" }}>
-        {eyebrow}
-      </p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-[-.04em] t-fg sm:text-4xl">{title}</h1>
-      <p className="mt-2 max-w-2xl text-sm leading-6 t-muted">{text}</p>
-    </div>
+    <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 className="display display-lg">{title}</h1>
+        <p className="lede mt-3">{text}</p>
+      </div>
+      {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+    </header>
   );
 }
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <section
-      className={`rounded-2xl p-6 ${className}`}
-      style={{ border: "1px solid var(--border)", background: "var(--bg-card)" }}
-    >
-      {children}
-    </section>
-  );
+  return <section className={`panel p-6 ${className}`}>{children}</section>;
 }
 
 export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-2 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-700 dark:text-rose-300"
-    >
-      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+    <div role="alert" className="note note-error">
+      <CircleAlert />
       <div>
         <p>{message}</p>
         {onRetry && (
-          <button onClick={onRetry} className="mt-1 font-semibold underline underline-offset-2">
-            Retry
+          <button onClick={onRetry} className="mt-1 font-medium underline">
+            Try again
           </button>
         )}
       </div>
@@ -211,7 +214,7 @@ export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () 
 
 export function Loading({ label }: { label: string }) {
   return (
-    <p className="flex items-center gap-2 text-sm t-muted">
+    <p className="flex items-center gap-2 text-sm t-muted" role="status">
       <Loader2 className="h-4 w-4 animate-spin" /> {label}
     </p>
   );

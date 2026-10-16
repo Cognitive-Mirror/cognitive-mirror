@@ -10,18 +10,9 @@
  */
 
 import { useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronUp, Loader2, Plus, Trash2 } from "lucide-react";
+import { ArrowRight, ChevronDown, ChevronUp, CircleCheck, Loader2, Plus, Trash2 } from "lucide-react";
 
-import {
-  AppShell,
-  Card,
-  ErrorNote,
-  Loading,
-  PageIntro,
-  describeError,
-  fieldClass,
-  fieldStyle,
-} from "@/components/AppShell";
+import { AppShell, ErrorNote, Loading, PageIntro, describeError } from "@/components/AppShell";
 import { RetrievalHealth } from "@/components/RetrievalHealth";
 import { FillSamplePills, useDemoSamples } from "@/components/demo/FillSamplePills";
 import { ReviewPanel } from "@/components/evidence/ReviewPanel";
@@ -120,9 +111,8 @@ export function LearnerEvidencePage() {
   return (
     <AppShell role="learner" active="/learner/evidence">
       <PageIntro
-        eyebrow="Learner / Evidence"
         title="Show what changed in your work."
-        text="Your submission is reviewed against the approved rubric for the capability, then sent to your manager. Their decision is what moves your capability level."
+        text="Your submission is reviewed against the approved rubric for the capability, then sent to your manager. Their decision is what moves your level."
       />
 
       {page.error && <ErrorNote message={page.error} onRetry={page.reload} />}
@@ -131,8 +121,8 @@ export function LearnerEvidencePage() {
 
       {result && (
         <div className="mb-6 space-y-4">
-          <p className="flex items-center gap-2 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-300">
-            <Check className="h-4 w-4" />
+          <p className="note note-success" role="status">
+            <CircleCheck />
             Submitted. It counts {result.data.capability_state.provisional_points.toFixed(1)} provisional
             points until your manager validates it — confidence stays capped at 0.40 until then.
           </p>
@@ -141,17 +131,16 @@ export function LearnerEvidencePage() {
       )}
 
       {page.data && (
-        <div className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
-          <Card>
-            <form onSubmit={submit} className="space-y-5">
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
+          <section aria-label="New evidence">
+            <form onSubmit={submit} className="space-y-6">
               <Field label="Capability demonstrated" id="ev-cap">
                 <select
                   id="ev-cap"
                   required
                   value={capabilityId}
                   onChange={(e) => set("capabilityId")(e.target.value)}
-                  className={fieldClass}
-                  style={fieldStyle}
+                  className="field"
                 >
                   {capabilities.map((c) => (
                     <option key={c.capability_id} value={c.capability_id}>
@@ -175,8 +164,7 @@ export function LearnerEvidencePage() {
                   value={form.title}
                   onChange={(e) => set("title")(e.target.value)}
                   placeholder="e.g. Reframed the Q2 launch decision"
-                  className={fieldClass}
-                  style={fieldStyle}
+                  className="field"
                 />
               </Field>
 
@@ -193,8 +181,7 @@ export function LearnerEvidencePage() {
                   value={form.content}
                   onChange={(e) => set("content")(e.target.value)}
                   placeholder="The situation, what you personally did, and the observable result…"
-                  className={fieldClass}
-                  style={fieldStyle}
+                  className="field"
                 />
               </Field>
 
@@ -205,8 +192,7 @@ export function LearnerEvidencePage() {
                     value={form.context}
                     onChange={(e) => set("context")(e.target.value)}
                     placeholder="e.g. Quarterly business review"
-                    className={fieldClass}
-                    style={fieldStyle}
+                    className="field"
                   />
                 </Field>
                 <Field
@@ -219,27 +205,25 @@ export function LearnerEvidencePage() {
                     value={form.contextRef}
                     onChange={(e) => set("contextRef")(e.target.value)}
                     placeholder="e.g. project-atlas"
-                    className={fieldClass}
-                    style={fieldStyle}
+                    className="field"
                   />
                 </Field>
               </div>
 
               <div>
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm font-medium t-fg">Evidence artifacts</span>
+                  <span className="text-[13px] font-medium t-fg">Evidence artifacts</span>
                   <button
                     type="button"
                     disabled={form.artifacts.length >= MAX_ARTIFACTS}
                     onClick={() => setForm((f) => ({ ...f, artifacts: [...f.artifacts, { url: "", label: "" }] }))}
-                    className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium transition disabled:opacity-40"
-                    style={{ background: "var(--bg-subtle)", color: "var(--fg-muted)" }}
+                    className="btn btn-text btn-sm -mr-2"
                   >
-                    <Plus className="h-3 w-3" /> Add link
+                    <Plus /> Add link
                   </button>
                 </div>
                 {form.artifacts.length === 0 && (
-                  <p className="text-[11px] t-subtle-fg">
+                  <p className="field-hint mt-0">
                     Optional. A pull request, design doc, ticket, postmortem or recording lets your manager check the work itself.
                   </p>
                 )}
@@ -253,114 +237,114 @@ export function LearnerEvidencePage() {
                         value={a.url}
                         onChange={(e) => setArtifact(i, "url", e.target.value)}
                         placeholder="https://github.com/org/repo/pull/123"
-                        className={`${fieldClass} flex-[2]`}
-                        style={fieldStyle}
+                        className="field flex-[2]"
                       />
                       <input
                         aria-label={`Artifact ${i + 1} label`}
                         value={a.label}
                         onChange={(e) => setArtifact(i, "label", e.target.value)}
                         placeholder="Label"
-                        className={`${fieldClass} flex-1`}
-                        style={fieldStyle}
+                        className="field flex-1"
                       />
                       <button
                         type="button"
                         aria-label={`Remove artifact ${i + 1}`}
                         onClick={() => setForm((f) => ({ ...f, artifacts: f.artifacts.filter((_, j) => j !== i) }))}
-                        className="grid w-10 shrink-0 place-items-center rounded-xl transition hover:opacity-70"
-                        style={{ background: "var(--bg-subtle)" }}
+                        className="btn btn-icon shrink-0"
                       >
-                        <Trash2 className="h-4 w-4 t-muted" />
+                        <Trash2 />
                       </button>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <button
-                disabled={submitting || !capabilityId}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-400 disabled:opacity-50"
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Reviewing against the rubric…
-                  </>
-                ) : (
-                  <>
-                    Submit for validation <ArrowRight className="h-4 w-4" />
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-3 rule pt-6">
+                <button disabled={submitting || !capabilityId} className="btn btn-primary btn-lg">
+                  {submitting ? (
+                    <>
+                      <Loader2 className="animate-spin" /> Reviewing against the rubric…
+                    </>
+                  ) : (
+                    <>
+                      Submit for validation <ArrowRight />
+                    </>
+                  )}
+                </button>
+                <p className="meta">Your manager sees it next.</p>
+              </div>
             </form>
-          </Card>
+          </section>
 
-          <aside className="h-fit space-y-4">
-            <Card>
-              <h2 className="font-semibold t-fg">What makes evidence strong</h2>
-              <ul className="mt-4 space-y-3 text-sm leading-5 t-muted">
-                <li><strong className="t-fg">Context:</strong> what was the challenge?</li>
-                <li><strong className="t-fg">Action:</strong> what did you personally do?</li>
-                <li><strong className="t-fg">Outcome:</strong> what changed, and how do you know?</li>
-              </ul>
-            </Card>
+          <aside className="h-fit space-y-8 lg:sticky lg:top-24">
+            <section>
+              <h2 className="display display-sm">What makes evidence strong</h2>
+              <ol className="mt-4 space-y-4 text-sm leading-6">
+                {[
+                  ["Context", "What was the situation, and who was involved?"],
+                  ["Action", "What did you personally do, distinct from the team?"],
+                  ["Outcome", "What changed, and how do you know?"],
+                ].map(([k, v], i) => (
+                  <li key={k} className="grid grid-cols-[1.5rem_1fr] gap-2">
+                    <span className="display text-base ink-primary">{i + 1}</span>
+                    <span><strong className="font-medium t-fg">{k}.</strong> <span className="t-muted">{v}</span></span>
+                  </li>
+                ))}
+              </ol>
+            </section>
             <RetrievalHealth status={status} />
           </aside>
         </div>
       )}
 
       {page.data && history.length > 0 && (
-        <Card className="mt-5">
-          <h2 className="font-semibold t-fg">Your evidence history</h2>
-          <p className="mt-1 text-xs t-subtle-fg">Newest first. Only validated items count toward your level.</p>
-          <div className="mt-4 space-y-3">
+        <section className="mt-16" aria-labelledby="history">
+          <h2 id="history" className="display display-sm">Your evidence history</h2>
+          <p className="meta mt-1">Newest first. Only validated items count toward your level.</p>
+          <div className="rows mt-4 rule rule-b">
             {history.map((item) => <HistoryCard key={item.evidence_id} item={item} />)}
           </div>
-        </Card>
+        </section>
       )}
     </AppShell>
   );
 }
 
-const STATUS_TONE: Record<string, { label: string; style: React.CSSProperties }> = {
-  pending: { label: "Awaiting manager", style: { background: "rgba(245,158,11,.14)", color: "rgb(217,119,6)" } },
-  validated: { label: "Validated", style: { background: "rgba(16,185,129,.14)", color: "rgb(5,150,105)" } },
-  rejected: { label: "Not accepted", style: { background: "rgba(244,63,94,.12)", color: "rgb(225,29,72)" } },
-  disputed: { label: "Escalated", style: { background: "rgba(99,102,241,.14)", color: "var(--accent-fg)" } },
+const STATUS_TAG: Record<string, { label: string; className: string }> = {
+  pending: { label: "Waiting on your manager", className: "tag tag-pending" },
+  validated: { label: "Validated", className: "tag tag-does" },
+  rejected: { label: "Not accepted", className: "tag tag-risk" },
+  disputed: { label: "Escalated", className: "tag tag-primary" },
 };
 
 function HistoryCard({ item }: { item: MyEvidence }) {
   const [open, setOpen] = useState(false);
-  const tone = STATUS_TONE[item.validation_status] ?? STATUS_TONE.pending;
+  const tag = STATUS_TAG[item.validation_status] ?? STATUS_TAG.pending;
   return (
-    <div className="rounded-xl p-4" style={{ border: "1px solid var(--border)", background: "var(--bg-subtle)" }}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
+    <article className="py-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium t-fg">{item.title}</p>
-          <p className="mt-0.5 text-[11px] t-subtle-fg">
-            {item.capability_name} · {new Date(item.submitted_at).toLocaleDateString()}
+          <h3 className="text-[0.9375rem] font-medium t-fg">{item.title}</h3>
+          <p className="meta mt-1">
+            {item.capability_name} · submitted {new Date(item.submitted_at).toLocaleDateString()}
             {item.context_ref && ` · ${item.context_ref}`}
           </p>
         </div>
-        <span className="rounded-full px-2.5 py-1 text-[11px] font-semibold" style={tone.style}>
-          {tone.label}
+        <span className={tag.className}>
+          {tag.label}
           {item.decision && item.validation_status === "validated" && ` · ${item.decision.strength}`}
         </span>
       </div>
-      {item.artifacts.length > 0 && <div className="mt-2"><ArtifactBadges artifacts={item.artifacts} /></div>}
+      {item.artifacts.length > 0 && <div className="mt-3"><ArtifactBadges artifacts={item.artifacts} /></div>}
       {item.decision?.feedback && (
-        <p className="mt-2 text-xs leading-5 t-muted">
-          <strong className="t-fg">Manager:</strong> {item.decision.feedback}
-        </p>
+        <blockquote className="mt-3 max-w-[68ch] text-sm leading-6 t-muted">
+          <span className="font-medium t-fg">Your manager: </span>&ldquo;{item.decision.feedback}&rdquo;
+        </blockquote>
       )}
       {item.review && (
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium"
-          style={{ color: "var(--accent-fg)" }}
-        >
-          {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          {open ? "Hide" : "Show"} AI review
+        <button onClick={() => setOpen((v) => !v)} className="btn btn-text btn-sm -ml-3 mt-2">
+          {open ? <ChevronUp /> : <ChevronDown />}
+          {open ? "Hide" : "Show"} the AI review
         </button>
       )}
       {open && item.review && (
@@ -368,7 +352,7 @@ function HistoryCard({ item }: { item: MyEvidence }) {
           <ReviewPanel review={item.review} content={item.content} />
         </div>
       )}
-    </div>
+    </article>
   );
 }
 
@@ -385,11 +369,11 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-2 block text-sm font-medium t-fg" htmlFor={id}>
+      <label className="field-label" htmlFor={id}>
         {label}
       </label>
       {children}
-      {hint && <p className="mt-1 text-[11px] t-subtle-fg">{hint}</p>}
+      {hint && <p className="field-hint">{hint}</p>}
     </div>
   );
 }

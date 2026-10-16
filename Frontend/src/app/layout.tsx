@@ -1,23 +1,34 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Manrope } from "next/font/google";
+import { Funnel_Display, Funnel_Sans, Martian_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeControls";
 import { DemoRoot } from "@/components/demo/DemoToolbar";
 
-const manrope = Manrope({
-  variable: "--font-manrope",
+// One superfamily in two cuts, so headline and interface share their bones.
+const ui = Funnel_Sans({
+  variable: "--font-ui",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const display = Funnel_Display({
+  variable: "--font-display",
   subsets: ["latin"],
+});
+
+const code = Martian_Mono({
+  variable: "--font-code",
+  subsets: ["latin"],
+  axes: ["wdth"],
 });
 
 export const metadata: Metadata = {
   title: "Cognitive Mirror",
   description: "Capability intelligence: learning, workplace evidence and manager validation.",
 };
+
+// Runs before first paint: a saved choice wins, otherwise follow the system.
+// Without it, a light-mode viewer would see the dark server render flash.
+const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("cognitive-mirror-theme");if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}document.documentElement.dataset.theme=t}catch(e){}})()`;
 
 export default function RootLayout({
   children,
@@ -27,8 +38,12 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${manrope.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${ui.variable} ${display.variable} ${code.variable} h-full antialiased`}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">
         <ThemeProvider>
           <DemoRoot>{children}</DemoRoot>

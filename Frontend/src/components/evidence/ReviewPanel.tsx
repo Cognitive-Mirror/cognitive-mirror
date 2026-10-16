@@ -39,74 +39,76 @@ export function ReviewPanel({
   const provenance = review.provenance ?? (review.model_name.startsWith("fallback") ? "fallback" : "live_model");
   const quotes = review.verified_quotes ?? [];
   return (
-    <div
-      className="rounded-xl p-4"
-      style={{ border: "1px solid rgba(99,102,241,0.2)", background: "rgba(99,102,241,0.06)" }}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--accent-fg)" }}>
-          <Sparkles className="h-4 w-4" />
+    <section className="panel overflow-hidden" aria-label={title}>
+      <header className="flex flex-wrap items-center justify-between gap-2 px-5 py-3.5 rule-b" style={{ background: "var(--surface)" }}>
+        <h3 className="flex items-center gap-2 text-sm font-medium t-fg">
+          <Sparkles className="h-4 w-4 ink-primary" />
           {title}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+        </h3>
+        <div className="flex flex-wrap items-center gap-1.5">
           <GroundingBadge grounded={review.grounded} citationCount={review.rubric_citations.length} />
           <ProvenanceBadge provenance={provenance} model={review.model_name} />
         </div>
-      </div>
+      </header>
 
-      <p className="mt-3 text-sm leading-6 t-fg">{review.summary}</p>
+      <div className="space-y-4 px-5 py-5">
+        <p className="display text-[1.1875rem] leading-snug">{review.summary}</p>
 
-      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] t-subtle-fg">
-        <span>
-          Strength: <strong className="t-fg capitalize">{review.strength}</strong>
-        </span>
-        <span>Confidence: {Math.round(review.ai_confidence * 100)}%</span>
-        {review.requires_human_review && (
-          <span className="text-amber-600 dark:text-amber-400">Manager review required</span>
+        <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
+          <div>
+            <dt className="meta">Strength</dt>
+            <dd className="mt-0.5 font-medium capitalize t-fg">{review.strength}</dd>
+          </div>
+          <div>
+            <dt className="meta">AI confidence</dt>
+            <dd className="num mt-0.5 font-medium t-fg">{Math.round(review.ai_confidence * 100)}%</dd>
+          </div>
+          {review.requires_human_review && (
+            <div>
+              <dt className="meta">Decision</dt>
+              <dd className="mt-0.5 font-medium ink-pending">Manager review required</dd>
+            </div>
+          )}
+        </dl>
+
+        {review.rubric_citations.length > 0 && (
+          <CitationList slugs={review.rubric_citations} details={review.citation_details} />
+        )}
+
+        {content && quotes.length > 0 && (
+          <div className="inset px-5 py-4">
+            <p className="caption mb-2">What the judgement rests on</p>
+            <HighlightedText text={content} spans={quoteSpans(review)} />
+          </div>
+        )}
+
+        {!content && quotes.length > 0 && (
+          <ul className="space-y-2 text-sm leading-6">
+            {quotes.map((q) => (
+              <li key={q.start} className="t-fg">
+                <mark className="quote-mark">&ldquo;{q.quote}&rdquo;</mark>
+                {q.clause && <span className="code ml-2 ink-primary">{q.clause}</span>}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {review.concerns.length > 0 && (
+          <div>
+            <p className="caption mb-1.5">Concerns</p>
+            <ul className="list-disc space-y-1 pl-4 text-sm leading-6 t-muted marker:text-[var(--ink-3)]">
+              {review.concerns.map((c) => <li key={c}>{c}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {review.recommendation && (
+          <p className="rule pt-4 text-sm leading-6 t-fg">
+            <span className="font-medium">Next step. </span>
+            {review.recommendation}
+          </p>
         )}
       </div>
-
-      {review.rubric_citations.length > 0 && (
-        <div className="mt-3">
-          <CitationList slugs={review.rubric_citations} details={review.citation_details} />
-        </div>
-      )}
-
-      {content && quotes.length > 0 && (
-        <div className="mt-4 rounded-xl p-4" style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}>
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide t-subtle-fg">
-            What the judgement rests on
-          </p>
-          <HighlightedText text={content} spans={quoteSpans(review)} />
-        </div>
-      )}
-
-      {!content && quotes.length > 0 && (
-        <ul className="mt-3 space-y-1.5 text-[11px] leading-5">
-          {quotes.map((q) => (
-            <li key={q.start} className="t-muted">
-              <span className="rounded px-1 t-fg" style={{ background: "rgba(16,185,129,0.15)" }}>
-                &ldquo;{q.quote}&rdquo;
-              </span>
-              {q.clause && <span className="ml-1 font-mono text-[10px]" style={{ color: "var(--accent-fg)" }}>{q.clause}</span>}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {review.concerns.length > 0 && (
-        <ul className="mt-3 space-y-1 text-[11px] leading-5 t-muted">
-          {review.concerns.map((c) => (
-            <li key={c}>· {c}</li>
-          ))}
-        </ul>
-      )}
-
-      {review.recommendation && (
-        <p className="mt-3 text-xs leading-5 t-fg">
-          <strong>Next:</strong> {review.recommendation}
-        </p>
-      )}
-    </div>
+    </section>
   );
 }
