@@ -67,6 +67,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     warm_task: asyncio.Task[None] | None = None
     if settings.demo_enabled:
         await _prepare_demo()
+        # Keep login and the first page render independent of retrieval warmup.
         if settings.demo_warm_index:
             warm_task = asyncio.create_task(_warm_demo_index())
     yield
