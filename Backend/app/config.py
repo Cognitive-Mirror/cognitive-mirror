@@ -94,6 +94,14 @@ class Settings(BaseSettings):
         ),
     )
     demo_inference_delay_seconds: float = Field(default=1.2, ge=0.0, le=10.0)
+    demo_warm_index: bool = Field(
+        default=False,
+        description=(
+            "Warm the demo retrieval index during backend startup. Disabled by "
+            "default so local development can serve the UI immediately; the "
+            "index is built lazily on the first retrieval request."
+        ),
+    )
 
     # ─── Retrieval (ARC) ───
     # Grounding the AI in approved Impact knowledge is thesis 27 Priority 3.

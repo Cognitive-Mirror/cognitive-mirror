@@ -4,6 +4,7 @@ Sign-in happens in Firebase on the client. This service verifies the resulting
 ID token and maps it to a `users` row (app/auth.py); it never sees a password.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -31,27 +32,47 @@ async def _prepare_demo() -> None:
     Never fatal: a missing schema is reported, and the server still starts.
     """
     from app.demo_seed import demo_is_seeded, demo_tenant, reset_demo
-    from rag.knowledge_index import get_index
-
     try:
         async with get_session_factory()() as session:
             if not await demo_is_seeded(session):
                 report = await reset_demo(session)
                 await session.commit()
                 logger.info("Demo tenant seeded in %.0f ms.", report.elapsed_ms)
-            await get_index(session, demo_tenant())
     except Exception as exc:
         logger.warning(
-            "Demo tenant not prepared (%s). Run `python -m alembic upgrade head` in "
-            "Backend/, then POST /api/demo/reset.", exc,
+            "Demo tenant not prepared (%s). Run `python -m alembic upgrade head` "
+            "in Backend/, then POST /api/demo/reset.", exc,
         )
+
+
+async def _warm_demo_index() -> None:
+    """Build the demo retrieval index when explicitly requested.
+
+    Index construction is intentionally lazy in local development: it is not
+    needed for login or the first-page render, and warming it here needlessly
+    delays the frontend while the backend is already otherwise healthy.
+    """
+    from app.demo_seed import demo_tenant
+    from rag.knowledge_index import get_index
+
+    try:
+        async with get_session_factory()() as session:
+            await get_index(session, demo_tenant())
+    except Exception as exc:
+        logger.warning("Demo retrieval index warmup failed: %s", exc)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    warm_task: asyncio.Task[None] | None = None
     if settings.demo_enabled:
         await _prepare_demo()
+        if settings.demo_warm_index:
+            warm_task = asyncio.create_task(_warm_demo_index())
     yield
+    if warm_task is not None:
+        warm_task.cancel()
+        await asyncio.gather(warm_task, return_exceptions=True)
     await dispose_engine()
 
 
