@@ -17,6 +17,7 @@ import { AppShell, ErrorNote, PageIntro, describeError } from "@/components/AppS
 import { RetrievalHealth } from "@/components/RetrievalHealth";
 import { RubricCitation } from "@/components/RubricCitation";
 import { RubricMatrix } from "@/components/admin/RubricMatrix";
+import { ScoreBar } from "@/components/viz/charts";
 import { useResource } from "@/lib/useResource";
 import { debugSearch, type DebugSearch, getIndexStatus } from "@/services/api";
 
@@ -152,10 +153,10 @@ function RetrievalDebugger() {
                         <RubricCitation slug={h.slug} detail={{ slug: h.slug, score: h.fused_score, anchor: false, via_graph: h.via_graph, kind: h.kind, level: h.level }} />
                         <p className="meta mt-1">{h.kind.replace(/_/g, " ")}{h.level ? ` · ${h.level}` : ""}</p>
                       </td>
-                      <td className="num text-right">{h.bm25 ? <>{h.bm25.score.toFixed(2)} <span className="meta">#{h.bm25.rank}</span></> : <span className="t-subtle-fg">—</span>}</td>
-                      <td className="num text-right">{h.dense ? <>{h.dense.score.toFixed(3)} <span className="meta">#{h.dense.rank}</span></> : <span className="t-subtle-fg">—</span>}</td>
+                      <td className="num whitespace-nowrap text-right">{h.bm25 ? <>{h.bm25.score.toFixed(2)} <span className="meta">#{h.bm25.rank}</span><ScoreBar value={h.bm25.score} max={Math.max(...result.hits.map((x) => x.bm25?.score ?? 0))} /></> : <span className="t-subtle-fg">—</span>}</td>
+                      <td className="num whitespace-nowrap text-right">{h.dense ? <>{h.dense.score.toFixed(3)} <span className="meta">#{h.dense.rank}</span><ScoreBar value={h.dense.score} max={Math.max(...result.hits.map((x) => x.dense?.score ?? 0))} /></> : <span className="t-subtle-fg">—</span>}</td>
                       <td>{h.via_graph ? <span className="tag tag-primary">Added</span> : <span className="t-subtle-fg">—</span>}</td>
-                      <td className="num text-right font-medium">{h.fused_score.toFixed(3)}</td>
+                      <td className="num whitespace-nowrap text-right font-medium">{h.fused_score.toFixed(3)}<ScoreBar value={h.fused_score} max={result.hits[0]?.fused_score ?? 1} strong /></td>
                     </tr>
                   ))}
                 </tbody>

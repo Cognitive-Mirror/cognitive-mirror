@@ -11,6 +11,8 @@ import { ErrorNote, Loading } from "@/components/AppShell";
 import { RubricCitation } from "@/components/RubricCitation";
 import { StatLine } from "@/components/dashboard/Metric";
 import { LEVEL_LABEL, LEVELS } from "@/components/explain/Mirror";
+import { type Unit, LevelUnits } from "@/components/viz/charts";
+import { CountUp } from "@/components/viz/motion";
 import { useResource } from "@/lib/useResource";
 import { getGovernanceMatrix, type MatrixCapability } from "@/services/api";
 
@@ -45,9 +47,9 @@ export function RubricMatrix() {
     <div>
       <StatLine
         items={[
-          { label: "Approved clauses", value: String(data.approved_clause_count) },
-          { label: "Capabilities", value: String(data.capabilities.length) },
-          { label: "Unvalidated confidence ceiling", value: data.unvalidated_ceiling.toFixed(2) },
+          { label: "Approved clauses", value: data.approved_clause_count },
+          { label: "Capabilities", value: data.capabilities.length },
+          { label: "Unvalidated confidence ceiling", value: data.unvalidated_ceiling, decimals: 2 },
           { label: "Scoring model", value: `v${data.scoring_model_version}` },
         ]}
       />
@@ -74,7 +76,6 @@ export function RubricMatrix() {
 }
 
 function CapabilityBlock({ capability: c, floor }: { capability: MatrixCapability; floor: number }) {
-  const total = c.coverage.subject_count || 1;
   const byKind = KIND_ORDER.map((k) => [k, c.clauses.filter((cl) => cl.kind === k)] as const).filter(([, v]) => v.length);
   const winner = c.requirements[c.requirements.length - 1];
   return (
@@ -133,25 +134,24 @@ function CapabilityBlock({ capability: c, floor }: { capability: MatrixCapabilit
           </div>
 
           <div>
-            <p className="caption mb-3">Coverage · {c.coverage.subject_count} learners · no average shown</p>
-            <div className="flex h-3 overflow-hidden" style={{ background: "var(--surface-2)" }}>
-              {LEVELS.map((level, i) => {
-                const n = c.coverage.distribution[level] ?? 0;
-                return n > 0 ? (
-                  <div key={level} title={`${LEVEL_LABEL[level]}: ${n}`} style={{ width: `${(n / total) * 100}%`, background: `var(--lvl-${i})`, borderRight: "1px solid var(--bg)" }} />
-                ) : null;
-              })}
-            </div>
-            <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1">
-              {LEVELS.map((level, i) => (
-                <span key={level} className="meta flex items-center gap-1.5 num">
-                  <span className="h-2 w-2" style={{ background: `var(--lvl-${i})` }} />
-                  {LEVEL_LABEL[level]} {c.coverage.distribution[level] ?? 0}
-                </span>
-              ))}
-            </div>
+            <p className="caption mb-3">Coverage · one square per learner · no average shown</p>
+            <LevelUnits
+              units={LEVELS.flatMap((level, i) =>
+                Array.from({ length: c.coverage.distribution[level] ?? 0 }, (_, k) => ({
+                  key: `${level}-${k}`,
+                  label: "Learner",
+                  level: i,
+                  tone: (winner && i >= LEVELS.indexOf(winner.required_level as (typeof LEVELS)[number]) ? "met" : "below") as Unit["tone"],
+                })),
+              )}
+              required={winner ? LEVELS.indexOf(winner.required_level as (typeof LEVELS)[number]) : null}
+              legend={false}
+            />
+            {winner && (
+              <p className="meta mt-2">Shaded columns meet the required level, {LEVEL_LABEL[winner.required_level]}. Green squares are there; grey squares are not yet.</p>
+            )}
             <p className="mt-4 text-sm t-fg">
-              <span className="num text-lg font-medium">{Math.round(c.coverage.validated_coverage * 100)}%</span>{" "}
+              <CountUp value={Math.round(c.coverage.validated_coverage * 100)} suffix="%" className="text-lg font-medium" />{" "}
               <span className="t-muted">
                 validated coverage (at required, manager-validated, confidence ≥ {floor.toFixed(2)}) ·{" "}
                 {Math.round(c.coverage.nominal_coverage * 100)}% nominal · median{" "}

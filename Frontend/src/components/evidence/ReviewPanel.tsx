@@ -15,6 +15,8 @@ import { Sparkles } from "lucide-react";
 import { CitationList, GroundingBadge } from "@/components/RubricCitation";
 import { ProvenanceBadge } from "@/components/explain/Badges";
 import { HighlightedText } from "@/components/explain/HighlightedText";
+import { ScoreBar, StrengthMeter } from "@/components/viz/charts";
+import { CountUp } from "@/components/viz/motion";
 import type { EvidenceReview } from "@/services/api";
 
 export function quoteSpans(review: EvidenceReview) {
@@ -57,11 +59,14 @@ export function ReviewPanel({
         <dl className="flex flex-wrap gap-x-8 gap-y-2 text-sm">
           <div>
             <dt className="meta">Strength</dt>
-            <dd className="mt-0.5 font-medium capitalize t-fg">{review.strength}</dd>
+            <dd className="mt-1"><StrengthMeter strength={review.strength} /></dd>
           </div>
           <div>
             <dt className="meta">AI confidence</dt>
-            <dd className="num mt-0.5 font-medium t-fg">{Math.round(review.ai_confidence * 100)}%</dd>
+            <dd className="mt-1 flex items-center gap-2.5">
+              <ScoreBar value={review.ai_confidence} max={1} />
+              <CountUp value={Math.round(review.ai_confidence * 100)} suffix="%" className="font-medium t-fg" />
+            </dd>
           </div>
           {review.requires_human_review && (
             <div>
